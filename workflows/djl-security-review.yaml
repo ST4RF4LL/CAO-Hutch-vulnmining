@@ -1,0 +1,70 @@
+{
+  "schema": "hutch.workflow.v1",
+  "name": "djl-security-review",
+  "version": "0.1.0",
+  "provider": "codex",
+  "target": "/Users/wh4lter/Workspace/djl_test/djl",
+  "snapshot": {
+    "analysis": "full",
+    "max_file_bytes": 2097152
+  },
+  "stages": [
+    {
+      "id": "architecture",
+      "task_id": "T-0001",
+      "profile": "djl-architecture-analyst",
+      "provider": "codex",
+      "profile_file": "cao-profiles/djl-architecture-analyst.md",
+      "depends_on": [],
+      "artifact": "artifacts/architecture.md",
+      "inputs": ["shared/source-fingerprint.json", "shared/atlas-status.txt"],
+      "required_sections": [
+        "Repository and Module Map",
+        "Runtime Components",
+        "Trust Boundaries and Data Flows",
+        "Security-Relevant Entry Points",
+        "Audit Scope Recommendations",
+        "Evidence and Limitations"
+      ],
+      "objective": "Build an evidence-backed architecture map of DJL, emphasizing runtime boundaries, model loading, network entry points, native/JNI boundaries, serialization, file access, and dependency/plugin loading. Use Atlas facts where available and cite repository-relative paths and symbols."
+    },
+    {
+      "id": "threat-analysis",
+      "task_id": "T-0002",
+      "profile": "djl-threat-modeler",
+      "provider": "opencode_cli",
+      "profile_file": "cao-profiles/djl-threat-modeler.md",
+      "depends_on": ["architecture"],
+      "artifact": "artifacts/threat-model.md",
+      "inputs": ["artifacts/architecture.md", "shared/atlas-status.txt"],
+      "required_sections": [
+        "Scope and Assumptions",
+        "Assets",
+        "Trust Boundaries",
+        "Threat Scenarios",
+        "Security Controls",
+        "Prioritized Audit Plan",
+        "Limitations"
+      ],
+      "objective": "Within a strict 60-second timebox, synthesize a source-grounded threat model exclusively from artifacts/architecture.md and shared/atlas-status.txt. Do not call Atlas and do not inspect the source snapshot; the architecture artifact already contains the cited source evidence. Rank realistic abuse cases and convert them into an actionable audit plan with sources, transforms, sinks, expected guards, and exact code scopes. Do not report vulnerabilities at this stage."
+    },
+    {
+      "id": "code-audit",
+      "task_id": "T-0003",
+      "profile": "djl-code-auditor",
+      "provider": "opencode_cli",
+      "profile_file": "cao-profiles/djl-code-auditor.md",
+      "depends_on": ["architecture", "threat-analysis"],
+      "artifact": "artifacts/code-audit.md",
+      "inputs": ["artifacts/architecture.md", "artifacts/threat-model.md", "shared/atlas-status.txt"],
+      "required_sections": [
+        "Scope and Method",
+        "Coverage",
+        "Findings",
+        "Reviewed Hotspots",
+        "Evidence and Limitations"
+      ],
+      "objective": "Within a strict 60-second timebox, audit only AP-1 by reading exactly these three files: api/src/main/java/ai/djl/translate/ServingTranslatorFactory.java, api/src/main/java/ai/djl/util/ClassLoaderUtils.java, and api/src/main/java/ai/djl/repository/zoo/BaseModelLoader.java. Do not call Atlas, grep, or inspect any other source file. Validate data flow and reachability before reporting candidates. Cite exact file and line evidence and distinguish confirmed evidence from assumptions. If evidence is insufficient, record an audit lead rather than a vulnerability; explicitly mark all other threat-model plans unreviewed."
+    }
+  ]
+}
