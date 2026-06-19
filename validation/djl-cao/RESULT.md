@@ -26,12 +26,13 @@ End-to-end blocking `handoff` completion is not yet reliable with the current Op
   `4cf1a8fee72a7c297de61fb84357e48a17d0e265fdff601934b9cc0096030619`
   with 2,103 pre-existing modified paths.
 
-## Compatibility work required
+## Compatibility finding
 
-CAO's OpenCode status detector expected a stable raw `ctrl+p commands` footer.
+CAO's OpenCode status detector expects a stable raw `ctrl+p commands` footer.
 OpenCode 1.16.2 paints the footer with cursor-addressed fragments and continuously
-animates TUI chrome. The local CAO checkout was patched to use composited-screen,
-per-chunk detection for OpenCode. The targeted provider/status tests pass (77 tests).
+animates TUI chrome. This can delay or miss CAO state transitions. A temporary local
+diagnostic change confirmed the cause and was then fully removed. The CAO checkout
+remains unmodified; no CAO commit, pull request, or push was made.
 
 The generated supervisor profile uses the local CAO checkout for `cao-mcp-server`.
 This avoids the first-run timeout caused by the upstream example's network-dependent
@@ -39,12 +40,14 @@ This avoids the first-run timeout caused by the upstream example's network-depen
 
 ## Remaining limitation
 
-During the second blocking handoff, the worker finished its file artifact but OpenCode
+During the blocking handoff, the worker finished its file artifact but OpenCode
 showed an API socket retry before emitting its duration-bearing completion marker.
 CAO therefore kept both worker and supervisor in `processing`. Durable Rabbit Hutch
 execution must treat artifact/result files as authoritative and record terminal status
 as supporting runtime state, not as the sole completion source.
 
+Any workaround for this compatibility gap belongs in the Rabbit Hutch adapter or its
+file-based completion protocol, not in a CAO fork.
+
 The candidate findings in the Java auditor report are unvalidated smoke-test output and
 must not be treated as confirmed vulnerabilities.
-
