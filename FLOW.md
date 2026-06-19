@@ -60,3 +60,13 @@ Each invocation creates `runs/djl-vulnerability-mining-<timestamp>/` containing:
 - `events.jsonl` and aggregated `findings.jsonl`.
 
 CAO Web shows the registered flow and live CAO sessions/terminals. It does not currently model a multi-stage DAG inside one native flow record. Detailed stage status therefore remains in Hutch's `state.json`; this preserves the no-CAO-patch boundary.
+
+## Completed-flow dashboard
+
+CAO's flow table stores definitions and one `last_run` timestamp, not durable run instances. Its session API enumerates live tmux sessions, and normal terminal cleanup removes worker database rows. Hutch therefore provides a read-only archive dashboard backed by the durable `runs/` evidence and optional CAO terminal snapshots:
+
+```bash
+python3 scripts/run_hutch_dashboard.py
+```
+
+Open `http://127.0.0.1:9890`. The left panel lists completed Flow instances. The right panel shows Flow metadata, every supervisor/worker Agent, recovered CAO session/terminal/window identifiers, retries, summaries, and the original text of intermediate and final deliverables. The validation version deliberately has no mutation endpoints and does not patch CAO.

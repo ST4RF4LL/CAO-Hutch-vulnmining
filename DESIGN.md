@@ -18,5 +18,6 @@
   3. inbox/outbox 消费需要幂等、原子写入及任务租约，否则恢复时可能重复执行。
   4. permissions.yaml 只是声明，必须由 CAO、容器或系统沙箱真正执行。
   5. CAO 原生 flow 当前是“定时启动一个 Agent session”，没有 DAG stage 模型；Rabbit Hutch 将 DAG 编译进 supervisor 协议，并把阶段状态保存在 Run 数据中。
+  6. CAO 只展示存活的 tmux session，清理后的 Agent terminal 不再通过 Web/API 可见；Rabbit Hutch Dashboard 从 Run 证据和 CAO terminal snapshot 构建只读历史视图。
 
   总体原则已经明确：CAO 必须看得见 flow 和所有 Agent 运行，兔笼管生成与安全任务状态；CAO 可替换，Run 数据不可丢。
