@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "maintenance_rule": "Define MCP servers in .opencode/opencode.json, then assign their exposed <server>_* tool patterns here and in the matching agent permission block.",
+  "servers": {
+    "context7": {
+      "status": "disabled-by-default",
+      "type": "remote",
+      "purpose": "Framework and library documentation lookup."
+    },
+    "gh_grep": {
+      "status": "disabled-by-default",
+      "type": "remote",
+      "purpose": "Public GitHub code search for references and ecosystem patterns."
+    },
+    "semgrep": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "Static security rule scanning."
+    },
+    "codeql": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "CodeQL database/query workflows."
+    },
+    "joern": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "Joern CPG generation, query execution, and static vulnerability mining rule assistance."
+    },
+    "cpp_index": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "C/C++ symbol, call graph, and build metadata indexing."
+    },
+    "jvm_index": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "Java/JVM dependency, framework, and call graph indexing."
+    },
+    "python_index": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "Python import, framework, and call graph indexing."
+    },
+    "audit_lab": {
+      "status": "placeholder",
+      "type": "custom",
+      "purpose": "Safe local validation and proof-of-concept assistance."
+    }
+  },
+  "agents": {
+    "security-intel-collector": ["context7_*", "gh_grep_*"],
+    "c-cpp-source-auditor": ["semgrep_*", "codeql_*", "joern_*", "cpp_index_*"],
+    "java-source-auditor": ["semgrep_*", "codeql_*", "joern_*", "jvm_index_*"],
+    "python-source-auditor": ["semgrep_*", "codeql_*", "joern_*", "python_index_*"],
+    "vulnerability-validator": ["audit_lab_*"],
+    "security-skill-optimizer": ["joern_*"],
+    "security-audit-orchestrator": []
+  }
+}

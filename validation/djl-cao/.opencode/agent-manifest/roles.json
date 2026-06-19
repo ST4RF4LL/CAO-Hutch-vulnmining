@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "purpose": "Role boundaries for the OpenCode multi-agent source security audit workspace.",
+  "agents": {
+    "security-audit-orchestrator": {
+      "mode": "primary",
+      "responsibility": "Coordinate the audit, route work to subagents, consolidate the final report, and trigger audit-asset optimization from validation feedback.",
+      "inputs": ["User scope", "repository path", "audit constraints"],
+      "outputs": ["Unified audit report", "language routing summary", "open questions", "skill/rule optimization summary", "artifact summary and tmp cleanup result"],
+      "must_not": ["Deep-audit language-specific code directly", "run exploit validation directly", "edit audited source", "edit audit assets directly"]
+    },
+    "security-intel-collector": {
+      "mode": "subagent",
+      "responsibility": "Collect project, dependency, configuration, and attack-surface context before audit.",
+      "inputs": ["Repository path", "user scope"],
+      "outputs": ["Attack Surface Map", "Language Audit Routing", "dependency and exposure notes"],
+      "must_not": ["Produce final vulnerability claims without source evidence", "modify source"]
+    },
+    "c-cpp-source-auditor": {
+      "mode": "subagent",
+      "responsibility": "Perform C/C++ source security review.",
+      "inputs": ["C/C++ files", "build metadata", "attack-surface notes"],
+      "outputs": ["Candidate findings with code evidence", "risky data flows", "validation requests"],
+      "artifacts": ["reports/sarif/c-cpp-source-auditor.<agent-session-id>.sarif", "reports/vulnerability-mining/c-cpp-source-auditor.<agent-session-id>.json"],
+      "must_not": ["Audit Java/Python-only code as primary scope", "modify source"]
+    },
+    "java-source-auditor": {
+      "mode": "subagent",
+      "responsibility": "Perform Java/JVM source security review.",
+      "inputs": ["Java/JVM files", "build metadata", "framework notes"],
+      "outputs": ["Candidate findings with code evidence", "risky data flows", "validation requests"],
+      "artifacts": ["reports/sarif/java-source-auditor.<agent-session-id>.sarif", "reports/vulnerability-mining/java-source-auditor.<agent-session-id>.json"],
+      "must_not": ["Audit C/C++ or Python-only code as primary scope", "modify source"]
+    },
+    "python-source-auditor": {
+      "mode": "subagent",
+      "responsibility": "Perform Python source security review.",
+      "inputs": ["Python files", "dependency metadata", "framework notes"],
+      "outputs": ["Candidate findings with code evidence", "risky data flows", "validation requests"],
+      "artifacts": ["reports/sarif/python-source-auditor.<agent-session-id>.sarif", "reports/vulnerability-mining/python-source-auditor.<agent-session-id>.json"],
+      "must_not": ["Audit C/C++ or Java-only code as primary scope", "modify source"]
+    },
+    "vulnerability-validator": {
+      "mode": "subagent",
+      "responsibility": "Validate candidate findings and classify exploitability using safe local evidence.",
+      "inputs": ["Candidate finding", "affected code", "constraints"],
+      "outputs": ["confirmed/likely/needs-info/false-positive decision", "minimal local reproduction notes"],
+      "must_not": ["Attack third-party systems", "exfiltrate data", "perform persistence", "modify production data"]
+    },
+    "security-skill-optimizer": {
+      "mode": "subagent",
+      "responsibility": "Improve audit skills, Joern rules, vulnerability cases, and false-positive cases from validator feedback.",
+      "inputs": ["Validation results", "source auditor notes", "existing skill/rule/case assets"],
+      "outputs": ["Updated SKILL.md files", "updated Joern rules", "updated vulnerability and false-positive cases", "change summary"],
+      "must_not": ["Modify audited application source", "create exploit instructions beyond defensive local validation context", "change agent role boundaries without explicit request"]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "convention": "Skills under .opencode/skills/<subagent-skill-group>/ auto-map to the owner_agent defined in each group's collection.json. Agent frontmatter uses '*': allow for skills, so any skill discovered by OpenCode is available. No manual sync needed between collection.json and agent permissions.",
+  "collections": {
+    "security-intel-subagent": {
+      "directory": ".opencode/skills/security-intel-subagent",
+      "owner_agent": "security-intel-collector"
+    },
+    "common-subagent": {
+      "directory": ".opencode/skills/common-subagent",
+      "owner_agent": "shared",
+      "note": "Shared collection — skills here are available to all agents."
+    },
+    "c-cpp-subagent": {
+      "directory": ".opencode/skills/c-cpp-subagent",
+      "owner_agent": "c-cpp-source-auditor"
+    },
+    "java-subagent": {
+      "directory": ".opencode/skills/java-subagent",
+      "owner_agent": "java-source-auditor"
+    },
+    "python-subagent": {
+      "directory": ".opencode/skills/python-subagent",
+      "owner_agent": "python-source-auditor"
+    },
+    "vulnerability-validator-subagent": {
+      "directory": ".opencode/skills/vulnerability-validator-subagent",
+      "owner_agent": "vulnerability-validator"
+    },
+    "security-skill-optimizer-subagent": {
+      "directory": ".opencode/skills/security-skill-optimizer-subagent",
+      "owner_agent": "security-skill-optimizer"
+    }
+  }
+}

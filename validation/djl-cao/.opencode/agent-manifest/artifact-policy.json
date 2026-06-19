@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "tmp_root": "tmp",
+  "cleanup_owner": "security-audit-orchestrator",
+  "cleanup_policy": {
+    "when": "At the end of each orchestrated audit task, after final report synthesis and after reusable assets are promoted by security-skill-optimizer. Only task subdirectories under tmp/ are cleaned; reports/ and tmp/.gitkeep/tmp/README.md are preserved.",
+    "preserve": ["tmp/.gitkeep", "tmp/README.md"],
+    "delete": ["tmp/<task_module>/**"]
+  },
+  "agent_session_id": {
+    "source": "Use the session id provided by the orchestrator. If none is provided, derive a stable id from agent name plus timestamp and report it in the output.",
+    "allowed_pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+  },
+  "reports": {
+    "static_analysis": {
+      "format": "sarif",
+      "standard": "SARIF 2.1.0",
+      "cardinality": "one file per agent session",
+      "path_template": "reports/sarif/{agent_name}.{agent_session_id}.sarif",
+      "required_for": ["semgrep", "codeql", "joern", "other static-analysis tools"],
+      "notes": "Normalize static-analysis output to SARIF even when the underlying tool produces another format."
+    },
+    "vulnerability_mining": {
+      "format": "json",
+      "cardinality": "one file per vulnerability-mining agent session",
+      "path_template": "reports/vulnerability-mining/{agent_name}.{agent_session_id}.json",
+      "required_fields": ["agent_name", "agent_session_id", "scope", "language", "tool_inputs", "findings", "artifacts", "learning_candidates"],
+      "notes": "Use this JSON for source-audit or vulnerability-mining findings before validation."
+    }
+  },
+  "work": {
+    "path_template": "tmp/{task_module}/",
+    "allowed_contents": ["intermediate files", "tool raw output", "temporary scripts", "temporary rules", "scratch notes"],
+    "promotion_rule": "Reusable scripts, Joern rules, static rules, vulnerability cases, and false-positive cases must be promoted by security-skill-optimizer before cleanup. When used, place temporary artifacts under tmp/<task_module>/."
+  }
+}
