@@ -6,3 +6,5 @@ validation/*/.opencode/node_modules/
 validation/*/.opencode/package.json
 validation/*/.opencode/package-lock.json
 runs/
+__pycache__/
+*.pyc

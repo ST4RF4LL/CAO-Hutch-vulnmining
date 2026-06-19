@@ -1,51 +1,62 @@
-# DJL architecture-to-audit flow
+# CAO-native DJL vulnerability-mining flow
 
-This experiment implements the Rabbit Hutch boundary described in `DESIGN-ori.md`:
-CAO runs isolated CLI agents, while this repository owns the workflow DAG, durable
-task/result files, artifact gates, target snapshot, and resume state.
+Hutch is the compiler and durable control plane around CAO. It generates Agent profiles and a native CAO flow; CAO owns flow registration, the supervisor session, worker terminals, dispatch, and lifecycle. Hutch stores the DAG contract, immutable source snapshot, artifact gates, findings, events, and resumable state.
 
-## Pipeline
+The previous `djl-security-review` implementation in `scripts/run_cao_flow.py` is retained as a feasibility experiment. It launches CAO agents but schedules the DAG in an external Python process, so it is not the production execution path and does not appear in CAO Web as a flow.
 
-1. `architecture` maps modules, runtime boundaries, entry points, and important flows.
-2. `threat-analysis` converts that map into ranked abuse cases and an audit plan.
-3. `code-audit` executes the plan and separates evidence-backed findings from leads.
+## Generated CAO topology
 
-Each stage receives `inbox/T-*.task.json`, writes one Markdown artifact, and commits
-completion by writing `outbox/T-*.result.json` last. The runner advances only when the
-result contract and required artifact headings validate. CAO terminal state is recorded
-for diagnostics but is not the completion authority.
+`workflows/djl-vulnerability-mining.yaml` compiles into one native flow and eight profiles:
 
-The source checkout is never used as an agent working directory. The runner copies
-bounded text/source files into `runs/<run-id>/shared/target-snapshot`, builds an Atlas
-full-analysis index there, and verifies the original Git status fingerprint after the
-flow.
+- `djl-vulnerability-mining-supervisor`
+- architecture analyst and threat modeler
+- Java/JVM, native/JNI, and supply-chain auditors
+- independent vulnerability validator
+- final report writer
 
-The executable experiment selects providers per stage. Architecture uses CAO's `codex`
-provider; bounded threat analysis and code audit use the imported OpenCode/DeepSeek
-setup. The runner keeps provider selection in workflow configuration. Because OpenCode
-1.16.2's fragmented TUI footer can prevent unmodified CAO from observing a ready state,
-the adapter confirms readiness from CAO's full terminal-output API and dispatches via
-CAO's terminal-input API. File artifacts remain authoritative. This workaround stays in
-Rabbit Hutch and does not patch CAO.
+When the flow runs, CAO creates session `cao-flow-djl-vulnerability-mining`. The supervisor delegates every stage through CAO MCP `assign`, so the worker terminals are part of that CAO session and visible in CAO Web. Hutch polls for the result file because CAO's TUI completion detection can be provider/version dependent. The supervisor cannot perform the audits itself and cannot advance a stage until `hutch_flow_state.py` validates the result contract and artifact headings.
 
-For OpenCode 1.16.x only, the prototype then mirrors the verified idle footer into that
-terminal's CAO FIFO so CAO's pending initialization request does not reap a healthy
-session after 120 seconds. This is deliberately isolated compatibility code and a
-private-interface dependency; replace it with a public status-override/event API or
-remove it when CAO/OpenCode status detection is reliable.
+The static-analysis pipeline is:
 
-## Run
+1. architecture and attack-surface mapping;
+2. threat modeling and prioritized audit planning;
+3. Java/JVM audit;
+4. JNI/native and native-loading audit;
+5. dependency, build, artifact, model, plugin, and configuration audit;
+6. independent candidate validation and deduplication;
+7. final evidence-linked report.
 
-CAO must already be healthy on `127.0.0.1:9889` and must have been started with
-`CAO_ENABLE_WORKING_DIRECTORY=true`.
+Audit workers use an immutable text/source snapshot of `/Users/wh4lter/Workspace/djl_test/djl`. They cannot use the network, run builds/tests, execute DJL, or write to the target. Finalization compares the target Git fingerprint with the pre-run fingerprint.
+
+## Generate and register
+
+CAO must be running with `CAO_ENABLE_WORKING_DIRECTORY=true`.
 
 ```bash
-python3 scripts/run_cao_flow.py workflows/djl-security-review.yaml \
-  --run-id djl-security-review-001
+python3 scripts/generate_cao_native_flow.py \
+  workflows/djl-vulnerability-mining.yaml \
+  --install --replace
 ```
 
-Use `--prepare-only` to stop after snapshot/index/task preparation. Resume a prepared
-or interrupted run with the same arguments plus `--resume`.
+This uses CAO's public `install` and `flow` CLI commands. It does not edit the CAO checkout. The generated bundle is under `generated/djl-vulnerability-mining/` and the registered flow is disabled by default to prevent an expensive scheduled audit from starting unexpectedly.
 
-Runtime material is written below `runs/` and ignored by Git. The three CAO profiles
-are installed through CAO's public CLI; the CAO source checkout is not edited.
+Open CAO Web at `http://127.0.0.1:9889`, choose **Flows**, and locate `djl-vulnerability-mining`. Use **Run Now** for a manual run. Enabling the flow activates its cron schedule; the placeholder annual schedule should be changed deliberately before enabling.
+
+Equivalent CLI command:
+
+```bash
+uv --directory /Users/wh4lter/Workspace/lab/cli-agent-orchestrator \
+  run cao flow run djl-vulnerability-mining
+```
+
+## Evidence and status
+
+Each invocation creates `runs/djl-vulnerability-mining-<timestamp>/` containing:
+
+- `manifest.json`, `workflow.json`, and `state.json`;
+- the immutable `shared/target-snapshot/` and source fingerprint;
+- task cards under `inbox/` and committed results under `outbox/`;
+- seven Markdown artifacts and the final report;
+- `events.jsonl` and aggregated `findings.jsonl`.
+
+CAO Web shows the registered flow and live CAO sessions/terminals. It does not currently model a multi-stage DAG inside one native flow record. Detailed stage status therefore remains in Hutch's `state.json`; this preserves the no-CAO-patch boundary.
