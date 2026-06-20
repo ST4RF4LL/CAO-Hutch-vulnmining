@@ -105,6 +105,34 @@ class HutchDashboardTests(unittest.TestCase):
         detail = self.repository.get_run("run-001")
         self.assertEqual(detail["duration_seconds"], 300)
         self.assertEqual(len(detail["agents"]), 2)  # supervisor + worker
+        self.assertEqual(
+            detail["graph"],
+            {
+                "nodes": [
+                    {
+                        "id": "flow-supervisor",
+                        "label": "audit-flow-supervisor",
+                        "status": "completed",
+                        "type": "supervisor",
+                    },
+                    {
+                        "id": "audit",
+                        "label": "audit-flow-auditor",
+                        "status": "done",
+                        "type": "agent",
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "flow-supervisor--audit",
+                        "source": "flow-supervisor",
+                        "target": "audit",
+                        "type": "dispatch",
+                        "transfers": [],
+                    }
+                ],
+            },
+        )
         worker = next(item for item in detail["agents"] if item["stage"] == "audit")
         self.assertEqual(worker["assignments"][0]["terminal_id"], "term-1")
         self.assertEqual(worker["assignments"][0]["session"], "cao-flow-audit-flow")

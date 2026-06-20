@@ -121,6 +121,7 @@ class RunRepository:
             agents.insert(0, supervisor)
 
         deliverables = self._flow_deliverables(run_dir, workflow)
+        graph = self._graph(agents)
         final_stage = workflow.get("stages", [])[-1]["id"] if workflow.get("stages") else None
         summary = next(
             (
@@ -150,10 +151,64 @@ class RunRepository:
             "summary": summary,
             "stage_count": len(stage_defs),
             "agents": agents,
+            "graph": graph,
             "deliverables": deliverables,
             "event_count": len(events),
             "manifest_present": bool(manifest),
         }
+
+    @staticmethod
+    def _graph(agents: list[dict[str, Any]]) -> dict[str, Any]:
+        nodes = [
+            {
+                "id": agent["stage"],
+                "label": agent.get("profile") or agent["stage"],
+                "status": agent.get("status"),
+                "type": "supervisor" if agent["stage"] == "flow-supervisor" else "agent",
+            }
+            for agent in agents
+        ]
+        by_stage = {agent["stage"]: agent for agent in agents}
+        producer_by_path: dict[str, str] = {}
+        for agent in agents:
+            for deliverable in agent.get("deliverables", []):
+                producer_by_path[deliverable["path"]] = agent["stage"]
+
+        edges: dict[tuple[str, str], dict[str, Any]] = {}
+
+        def ensure_edge(source: str, target: str, edge_type: str) -> dict[str, Any]:
+            key = (source, target)
+            if key not in edges:
+                edges[key] = {
+                    "id": f"{source}--{target}",
+                    "source": source,
+                    "target": target,
+                    "type": edge_type,
+                    "transfers": [],
+                }
+            elif edges[key]["type"] != edge_type:
+                edges[key]["type"] = "dependency+data"
+            return edges[key]
+
+        supervisor_present = "flow-supervisor" in by_stage
+        for agent in agents:
+            target = agent["stage"]
+            if target == "flow-supervisor":
+                continue
+            dependencies = agent.get("depends_on", [])
+            if supervisor_present and not dependencies:
+                ensure_edge("flow-supervisor", target, "dispatch")
+            for source in dependencies:
+                if source in by_stage:
+                    ensure_edge(source, target, "dependency")
+            for path in agent.get("inputs", []):
+                source = producer_by_path.get(path)
+                if not source or source == target:
+                    continue
+                edge = ensure_edge(source, target, "data")
+                if path not in edge["transfers"]:
+                    edge["transfers"].append(path)
+        return {"nodes": nodes, "edges": list(edges.values())}
 
     def _agent(
         self,

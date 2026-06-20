@@ -69,4 +69,4 @@ CAO's flow table stores definitions and one `last_run` timestamp, not durable ru
 python3 scripts/run_hutch_dashboard.py
 ```
 
-Open `http://127.0.0.1:9890`. The left panel lists completed Flow instances. The right panel shows Flow metadata, every supervisor/worker Agent, recovered CAO session/terminal/window identifiers, retries, summaries, and the original text of intermediate and final deliverables. The validation version deliberately has no mutation endpoints and does not patch CAO.
+Open `http://127.0.0.1:9890`. The left panel lists completed Flow instances. The right panel renders an interactive SVG node-edge DAG plus every supervisor/worker Agent, recovered CAO session/terminal/window identifiers, retries, summaries, and the original text of intermediate and final deliverables. Click a node for Agent/runtime/deliverable details; click an edge for dependency and transferred-file details. The graph can switch between the execution-dependency view and the complete artifact-data view. The validation version deliberately has no mutation endpoints and does not patch CAO.
