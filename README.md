@@ -63,3 +63,44 @@ Dashboard 地址默认为 `http://127.0.0.1:9890`。同一 Campaign 的三个 CA
 ## 边界
 
 Hutch 不替代 CAO 运行 Agent，不直接修改 CAO，也不把依赖版本命中等同于确认漏洞。完整审计结论以持久化 Run 产物、覆盖门结果和 finding validator 的复核结果为准。
+
+## 临时修复 CAO 的 OpenCode TUI 检测
+
+截至 2026-06-22 检查的 CAO `origin/main` commit `b8b1897`，上游尚未合入 Hutch 验证过的 OpenCode rendered-screen 修复。上游已有 OpenCode Provider、raw-buffer 状态规则和 inbox poller，但 `OpenCodeCliProvider.supports_screen_detection` 仍为 `False`，因此 StatusMonitor 不会使用 pyte 合成后的可见画面。OpenCode 的 alternate-screen/cursor redraw 可能拆散 footer 控制序列，导致初始化、运行中或完成状态误判；宽终端的 metadata sidebar 也可能污染结果提取。
+
+Hutch 仓库提供临时 patch：[`patches/cao-opencode-rendered-screen.patch`](patches/cao-opencode-rendered-screen.patch)。它只修改 CAO 的 OpenCode Provider，不修改 CAO 数据库、API 或 Flow 实现，也不把 CAO 的全局默认 Provider 改成 OpenCode；Hutch 生成的 Flow 会显式声明 `opencode_cli`。
+
+先停止本地 CAO 服务，并确认 CAO 中没有需要保留的运行中 session。然后执行：
+
+```bash
+export HUTCH_REPO=/Users/wh4lter/Workspace/Qu-Studio
+export CAO_REPO=/Users/wh4lter/Workspace/lab/cli-agent-orchestrator
+export CAO_PATCH="$HUTCH_REPO/patches/cao-opencode-rendered-screen.patch"
+
+git -C "$CAO_REPO" fetch origin
+git -C "$CAO_REPO" status --short
+
+if git -C "$CAO_REPO" apply --reverse --check "$CAO_PATCH"; then
+  echo "CAO OpenCode patch is already applied"
+elif git -C "$CAO_REPO" apply --check "$CAO_PATCH"; then
+  git -C "$CAO_REPO" apply "$CAO_PATCH"
+else
+  echo "Patch is incompatible with this CAO revision; do not force it" >&2
+  exit 1
+fi
+```
+
+`git status --short` 若显示非预期修改，应先自行提交或备份；不要在脏工作区执行 `git reset --hard`。应用后验证：
+
+```bash
+uv run --directory "$CAO_REPO" python -c \
+  'from cli_agent_orchestrator.providers.opencode_cli import OpenCodeCliProvider as P; assert P.supports_screen_detection is True'
+uv run --directory "$CAO_REPO" pytest \
+  test/providers/test_opencode_cli_unit.py -q
+```
+
+验证通过后重启 `cao-server` 和 CAO Web。升级 CAO 时先判断上游是否已经出现等价的 `supports_screen_detection = True` 与 `get_status_from_screen()` 实现；若已经合入，不再应用此 patch。需要回滚临时 patch 时执行：
+
+```bash
+git -C "$CAO_REPO" apply --reverse "$CAO_PATCH"
+```

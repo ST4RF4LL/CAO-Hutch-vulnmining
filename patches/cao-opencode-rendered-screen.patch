@@ -1,0 +1,98 @@
+diff --git a/src/cli_agent_orchestrator/providers/opencode_cli.py b/src/cli_agent_orchestrator/providers/opencode_cli.py
+index 9ed7098..839594a 100644
+--- a/src/cli_agent_orchestrator/providers/opencode_cli.py
++++ b/src/cli_agent_orchestrator/providers/opencode_cli.py
+@@ -20,7 +20,7 @@ The provider detects the following terminal states:
+ import logging
+ import re
+ import shlex
+-from typing import Optional
++from typing import List, Optional
+ 
+ from cli_agent_orchestrator.backends.registry import get_backend
+ from cli_agent_orchestrator.constants import OPENCODE_CONFIG_DIR, OPENCODE_CONFIG_FILE
+@@ -249,6 +249,45 @@ class OpenCodeCliProvider(BaseProvider):
+         # ── 5. UNKNOWN (fallback) ─────────────────────────────────────────────
+         return TerminalStatus.UNKNOWN
+ 
++    # OpenCode renders its TUI in the alternate screen and updates it with
++    # cursor-addressed redraws.  The raw FIFO stream can therefore split the
++    # visible ``ctrl+p commands`` footer with cursor-control sequences even
++    # though the composited terminal is plainly idle.  Opt into StatusMonitor's
++    # pyte screen path so state detection operates on what the user sees.
++    supports_screen_detection = True
++
++    def get_status_from_screen(self, screen_lines: List[str]) -> TerminalStatus:
++        """Detect OpenCode state from an escape-free composited viewport."""
++        rows = [line.rstrip() for line in screen_lines if line.strip()]
++        if not rows:
++            return TerminalStatus.UNKNOWN
++
++        joined = "\n".join(rows)
++        tail = rows[-25:]
++        tail_joined = "\n".join(tail)
++
++        # Permission overlays replace the normal input area.  Restrict the
++        # match to the lower viewport to avoid treating quoted response text as
++        # a live prompt.
++        if re.search(PERMISSION_PROMPT_PATTERN, tail_joined):
++            return TerminalStatus.WAITING_USER_ANSWER
++
++        # During generation OpenCode keeps the idle key hint on the same footer
++        # and adds ``esc interrupt``.  Processing must therefore win over the
++        # idle/footer checks below.  Tool spinners cover frames where the footer
++        # has not yet settled.
++        if re.search(PROCESSING_FOOTER_PATTERN, tail_joined) or any(
++            re.search(TOOL_CALL_IN_FLIGHT_PATTERN, line) for line in tail
++        ):
++            return TerminalStatus.PROCESSING
++
++        if re.search(IDLE_FOOTER_PATTERN, tail_joined):
++            if re.search(COMPLETION_MARKER_PATTERN, joined):
++                return TerminalStatus.COMPLETED
++            return TerminalStatus.IDLE
++
++        return TerminalStatus.UNKNOWN
++
+     def extract_last_message_from_script(self, script_output: str) -> str:
+         """Extract the agent's response from the TUI scrollback.
+ 
+@@ -272,6 +311,29 @@ class OpenCodeCliProvider(BaseProvider):
+         """
+         clean = re.sub(ANSI_CODE_PATTERN, "", script_output)
+ 
++        # Wide OpenCode panes render a metadata sidebar to the right of the
++        # conversation.  ``tmux capture-pane`` flattens both columns into each
++        # text row, so sidebar labels (Context/MCP/LSP) otherwise become part of
++        # the extracted agent response.  The sidebar boundary is the repeated
++        # end column of large whitespace gaps between the two panels.  Require
++        # the same boundary on at least two rows before cropping so ordinary
++        # response formatting is left untouched.
++        clean_lines = clean.splitlines()
++        gap_end_counts: dict[int, int] = {}
++        for line in clean_lines:
++            for match in re.finditer(r" {40,}(?=\S)", line):
++                if match.end() >= 80:
++                    gap_end_counts[match.end()] = gap_end_counts.get(match.end(), 0) + 1
++        if gap_end_counts:
++            sidebar_col, occurrences = max(
++                gap_end_counts.items(), key=lambda item: (item[1], item[0])
++            )
++            if occurrences >= 2:
++                clean = "\n".join(
++                    line[:sidebar_col].rstrip() if len(line) > sidebar_col else line
++                    for line in clean_lines
++                )
++
+         # Find the last FULL completion marker to anchor the turn boundary.
+         all_completions = list(re.finditer(COMPLETION_MARKER_PATTERN, clean))
+         if not all_completions:
+@@ -328,7 +390,7 @@ class OpenCodeCliProvider(BaseProvider):
+         stripped_lines = []
+         in_thinking = False
+         for line in agent_lines:
+-            if re.match(r"^\s*Thinking:", line):
++            if re.match(r"^\s*(?:Thinking:|\+\s+Thought:)", line):
+                 in_thinking = True
+                 continue
+             if in_thinking and not line.strip():
