@@ -1,0 +1,146 @@
+{
+  "schema": "hutch.cao-workflow.v1",
+  "name": "djl-recon-threat-intelligence",
+  "version": "1.0.0",
+  "description": "Builds complete repository intelligence before any vulnerability-mining tasks are planned.",
+  "schedule": "0 0 1 1 *",
+  "provider": "opencode_cli",
+  "target": "/Users/wh4lter/Workspace/pentest_gym/djl_test/djl",
+  "cao_repo": "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator",
+  "skill_roots": [
+    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
+  ],
+  "snapshot": {
+    "max_file_bytes": 2097152
+  },
+  "execution": {
+    "stage_timeout_seconds": 1800,
+    "max_attempts": 2,
+    "max_concurrency": 1,
+    "register_enabled": false
+  },
+  "campaign": {
+    "schema": "hutch.campaign.v1",
+    "id": "djl-adaptive-audit",
+    "phase": "recon"
+  },
+  "agents": [
+    {
+      "id": "repository-analyst",
+      "description": "Maps every DJL module, runtime component, business flow, and external interface.",
+      "mission": "Use the deterministic module inventory as the completeness boundary. Build architecture, component, business-flow, and external-interface intelligence for every module with source paths and symbols. Do not silently prioritize away low-risk modules and do not claim vulnerabilities.",
+      "atlas": true,
+      "skills": [
+        "secure-code-review-common",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "threat-modeler",
+      "description": "Builds source-grounded attack-surface, trust-boundary, and threat intelligence.",
+      "mission": "Derive attacker-controlled sources, assets, trust crossings, dangerous sinks, security controls, abuse cases, and threat hypotheses from the complete architecture intelligence. Preserve module IDs and distinguish source evidence, inference, and missing deployment facts.",
+      "atlas": true,
+      "skills": [
+        "secure-code-review-common",
+        "audit-artifact-management"
+      ]
+    }
+  ],
+  "stages": [
+    {
+      "id": "repository-intelligence",
+      "task_id": "I-0001",
+      "agent": "repository-analyst",
+      "depends_on": [],
+      "artifact": "artifacts/intelligence/architecture.md",
+      "required_artifacts": [
+        "artifacts/intelligence/architecture.json",
+        "artifacts/intelligence/business-flows.json",
+        "artifacts/intelligence/external-interfaces.json"
+      ],
+      "inputs": [
+        "shared/source-fingerprint.json",
+        "shared/snapshot-manifest.json",
+        "shared/repository-inventory.json",
+        "shared/modules.json"
+      ],
+      "required_sections": [
+        "Repository Scale and Module Map",
+        "Runtime Architecture",
+        "Business Logic and Data Flows",
+        "External Interfaces",
+        "Security-Relevant Components",
+        "Evidence and Limitations"
+      ],
+      "objective": "Produce complete architecture and business intelligence tied to every deterministic module ID.",
+      "json_contracts": [
+        {
+          "artifact": "artifacts/intelligence/architecture.json",
+          "schema": "hutch.architecture-intelligence.v1",
+          "required_fields": ["modules", "components"],
+          "module_coverage": true,
+          "module_field": "modules",
+          "inventory": "shared/modules.json"
+        },
+        {
+          "artifact": "artifacts/intelligence/business-flows.json",
+          "schema": "hutch.business-flows.v1",
+          "required_fields": ["flows"]
+        },
+        {
+          "artifact": "artifacts/intelligence/external-interfaces.json",
+          "schema": "hutch.external-interfaces.v1",
+          "required_fields": ["interfaces"]
+        }
+      ]
+    },
+    {
+      "id": "threat-intelligence",
+      "task_id": "I-0002",
+      "agent": "threat-modeler",
+      "depends_on": [
+        "repository-intelligence"
+      ],
+      "artifact": "artifacts/intelligence/threat-model.md",
+      "required_artifacts": [
+        "artifacts/intelligence/attack-surface.json",
+        "artifacts/intelligence/trust-boundaries.json",
+        "artifacts/intelligence/threat-model.json"
+      ],
+      "inputs": [
+        "shared/modules.json",
+        "artifacts/intelligence/architecture.md",
+        "artifacts/intelligence/architecture.json",
+        "artifacts/intelligence/business-flows.json",
+        "artifacts/intelligence/external-interfaces.json"
+      ],
+      "required_sections": [
+        "Scope Assets and Adversaries",
+        "Attack Surface",
+        "Trust Boundaries",
+        "Threat Scenarios",
+        "Expected Security Controls",
+        "Audit Intelligence by Module",
+        "Evidence and Limitations"
+      ],
+      "objective": "Produce complete threat intelligence that can be consumed by the separate audit-planning Flow.",
+      "json_contracts": [
+        {
+          "artifact": "artifacts/intelligence/attack-surface.json",
+          "schema": "hutch.attack-surface.v1",
+          "required_fields": ["surfaces"]
+        },
+        {
+          "artifact": "artifacts/intelligence/trust-boundaries.json",
+          "schema": "hutch.trust-boundaries.v1",
+          "required_fields": ["boundaries"]
+        },
+        {
+          "artifact": "artifacts/intelligence/threat-model.json",
+          "schema": "hutch.threat-model.v1",
+          "required_fields": ["threats"]
+        }
+      ]
+    }
+  ]
+}

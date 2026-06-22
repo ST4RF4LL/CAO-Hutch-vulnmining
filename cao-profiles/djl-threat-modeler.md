@@ -1,7 +1,7 @@
 ---
 name: djl-threat-modeler
 description: Converts an evidence-backed DJL architecture map into a prioritized source audit plan.
-provider: codex
+provider: opencode_cli
 role: reviewer
 allowedTools:
   - fs_read

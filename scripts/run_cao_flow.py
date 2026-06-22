@@ -19,9 +19,23 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from adaptive_audit import (
+    AdaptiveAuditError,
+    build_inventories,
+    validate_audit_plan,
+    validate_coverage_document,
+)
+from agent_cells import (
+    AgentCellError,
+    install_opencode_agent_policy,
+    prepare_agent_cells,
+    validate_cell_specs,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,9 +58,12 @@ TEXT_SUFFIXES = {
     ".cpp",
     ".gradle",
     ".groovy",
+    ".go",
     ".h",
     ".hpp",
     ".java",
+    ".js",
+    ".jsx",
     ".json",
     ".kt",
     ".kts",
@@ -54,9 +71,14 @@ TEXT_SUFFIXES = {
     ".properties",
     ".proto",
     ".py",
+    ".rb",
+    ".rs",
+    ".scala",
     ".sh",
     ".toml",
     ".txt",
+    ".ts",
+    ".tsx",
     ".xml",
     ".yaml",
     ".yml",
@@ -65,6 +87,10 @@ TEXT_NAMES = {
     "Dockerfile",
     "LICENSE",
     "Makefile",
+    "go.mod",
+    "package.json",
+    "pom.xml",
+    "pyproject.toml",
     "README",
     "gradlew",
     "mvnw",
@@ -166,6 +192,36 @@ def create_snapshot(source: Path, destination: Path, max_file_bytes: int) -> dic
     }
 
 
+def prepare_shared_contracts(workflow: dict[str, Any], run_dir: Path) -> None:
+    """Create deterministic inventory and safely import upstream campaign artifacts."""
+    shared = run_dir / "shared"
+    repository, modules = build_inventories(shared / "target-snapshot")
+    atomic_json(shared / "repository-inventory.json", repository)
+    atomic_json(shared / "modules.json", modules)
+    audit_plan = workflow.get("audit_plan")
+    if audit_plan is not None:
+        validate_audit_plan(modules, audit_plan)
+        atomic_json(shared / "audit-plan.json", audit_plan)
+    for seed in workflow.get("seed_artifacts", []):
+        if not isinstance(seed, dict):
+            raise FlowError("seed_artifacts entries must be objects")
+        source = Path(str(seed.get("source", ""))).expanduser().resolve()
+        destination_value = str(seed.get("destination", ""))
+        destination = (run_dir / destination_value).resolve()
+        if not source.is_file():
+            raise FlowError(f"seed artifact is not a file: {source}")
+        if run_dir.resolve() not in destination.parents:
+            raise FlowError(f"seed artifact destination escapes run directory: {destination_value}")
+        if destination_value in {
+            "shared/repository-inventory.json",
+            "shared/modules.json",
+            "shared/audit-plan.json",
+        }:
+            raise FlowError(f"seed artifact cannot replace a Hutch contract: {destination_value}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
 def index_snapshot(run_dir: Path, snapshot: Path, analysis: str) -> None:
     shared = run_dir / "shared"
     commands = [
@@ -204,11 +260,25 @@ def load_workflow(path: Path) -> dict[str, Any]:
         if missing:
             raise FlowError(f"stage {stage['id']} has unresolved dependencies: {sorted(missing)}")
         seen.add(stage["id"])
+    try:
+        validate_cell_specs(
+            workflow,
+            (
+                {
+                    "id": stage["id"],
+                    "profile": stage["profile"],
+                    "skills": stage.get("skills", []),
+                }
+                for stage in workflow["stages"]
+            ),
+        )
+    except AgentCellError as error:
+        raise FlowError(str(error)) from error
     return workflow
 
 
 def task_document(stage: dict[str, Any], run_dir: Path) -> dict[str, Any]:
-    return {
+    document = {
         "schema": "hutch.task.v1",
         "task_id": stage["task_id"],
         "stage": stage["id"],
@@ -221,6 +291,7 @@ def task_document(stage: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         "inputs": stage.get("inputs", []),
         "outputs": {
             "artifact": stage["artifact"],
+            "required_artifacts": stage.get("required_artifacts", []),
             "result": f"outbox/{stage['task_id']}.result.json",
         },
         "acceptance": {"required_sections": stage.get("required_sections", [])},
@@ -232,6 +303,25 @@ def task_document(stage: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         },
         "run_directory": str(run_dir),
     }
+    if stage.get("scope"):
+        document["scope"] = stage["scope"]
+        document["constraints"]["source_read_scope"] = stage["scope"].get("paths", [])
+    if stage.get("coverage_contract"):
+        document["coverage_contract"] = stage["coverage_contract"]
+    if stage.get("audit_plan_contract"):
+        document["audit_plan_contract"] = {
+            **stage["audit_plan_contract"],
+            "schema": "hutch.audit-plan.v1",
+            "strategy_allowed": ["whole_repo", "sharded", "hybrid"],
+            "max_concurrency_range": [1, 16],
+            "task_required_fields": ["id", "module_ids", "paths", "skills"],
+            "completeness_rule": "the union of task.module_ids must equal every id in the module inventory",
+        }
+    if stage.get("json_contracts"):
+        document["json_contracts"] = stage["json_contracts"]
+    if stage.get("report_consistency"):
+        document["report_consistency"] = stage["report_consistency"]
+    return document
 
 
 def validate_result(stage: dict[str, Any], run_dir: Path) -> tuple[bool, str]:
@@ -258,6 +348,128 @@ def validate_result(stage: dict[str, Any], run_dir: Path) -> tuple[bool, str]:
     declared = result.get("artifacts", [])
     if stage["artifact"] not in declared:
         return False, "result does not declare the required artifact"
+    for required in stage.get("required_artifacts", []):
+        required_path = run_dir / required
+        if not required_path.is_file() or required_path.stat().st_size == 0:
+            return False, f"required artifact is absent or empty: {required}"
+        if required not in declared:
+            return False, f"result does not declare required artifact: {required}"
+    for contract in stage.get("json_contracts", []):
+        try:
+            value = json.loads((run_dir / contract["artifact"]).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            return False, f"JSON contract is invalid for {contract['artifact']}: {error}"
+        if value.get("schema") != contract["schema"]:
+            return False, (
+                f"JSON contract {contract['artifact']} must use {contract['schema']}"
+            )
+        missing_fields = [field for field in contract.get("required_fields", []) if field not in value]
+        if missing_fields:
+            return False, (
+                f"JSON contract {contract['artifact']} is missing fields: {missing_fields}"
+            )
+        if contract.get("module_coverage"):
+            try:
+                inventory = json.loads(
+                    (run_dir / contract.get("inventory", "shared/modules.json")).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                expected = {module["id"] for module in inventory["modules"]}
+                entries = value[contract.get("module_field", "modules")]
+                actual = set()
+                for entry in entries:
+                    module_id = (
+                        entry
+                        if isinstance(entry, str)
+                        else entry.get("module_id", entry.get("id"))
+                    )
+                    if not isinstance(module_id, str) or not module_id:
+                        raise KeyError("module_id or id")
+                    actual.add(module_id)
+            except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+                return False, f"JSON module coverage is invalid for {contract['artifact']}: {error}"
+            if actual != expected:
+                return False, (
+                    f"JSON contract {contract['artifact']} module coverage mismatch; "
+                    f"missing={sorted(expected - actual)}, extra={sorted(actual - expected)}"
+                )
+    valid_coverage, coverage_reason = validate_coverage_document(stage, run_dir)
+    if not valid_coverage:
+        return False, coverage_reason
+    if stage.get("audit_plan_contract"):
+        try:
+            inventory = json.loads(
+                (run_dir / stage["audit_plan_contract"]["inventory"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            plan = json.loads(
+                (run_dir / stage["audit_plan_contract"]["artifact"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            allowed = stage["audit_plan_contract"].get("allowed_skills")
+            normalized_plan = validate_audit_plan(
+                inventory,
+                plan,
+                allowed_skills=set(allowed) if allowed is not None else None,
+            )
+            atomic_json(
+                run_dir / stage["audit_plan_contract"]["artifact"], normalized_plan
+            )
+        except (OSError, json.JSONDecodeError, AdaptiveAuditError) as error:
+            return False, f"audit plan is invalid: {error}"
+    if stage.get("report_consistency"):
+        contract = stage["report_consistency"]
+        try:
+            validation = json.loads(
+                (run_dir / contract["validation_result"]).read_text(encoding="utf-8")
+            )
+            validated_findings = validation["findings"]
+            report_findings = result["findings"]
+            key = lambda finding: (
+                finding.get("id"),
+                finding.get("status"),
+                str(finding.get("severity", "")).lower(),
+            )
+            if sorted(map(key, validated_findings)) != sorted(map(key, report_findings)):
+                return False, "final report result findings differ from validated findings"
+            status_counts = Counter(finding.get("status") for finding in validated_findings)
+            raw_count = 0
+            for relative in contract.get("audit_results", []):
+                audit_result = json.loads((run_dir / relative).read_text(encoding="utf-8"))
+                raw_count += len(audit_result.get("findings", []))
+            expected_metrics = [
+                (("Raw candidate findings",), raw_count),
+                (("Validated findings (post-deduplication)", "Validated findings after deduplication"), len(validated_findings)),
+                (("Findings confirmed", "Confirmed"), status_counts["confirmed"]),
+                (("Findings likely", "Likely"), status_counts["likely"]),
+                (("Findings needs-info", "Needs-info"), status_counts["needs-info"]),
+            ]
+            for labels, expected in expected_metrics:
+                match = next(
+                    (
+                        candidate
+                        for label in labels
+                        if (
+                            candidate := re.search(
+                                rf"(?im)^\|\s*{re.escape(label)}\s*\|\s*(\d+)\s*\|",
+                                artifact_text,
+                            )
+                        )
+                    ),
+                    None,
+                )
+                if not match:
+                    return False, f"final report metric is absent: {labels[0]}"
+                if int(match.group(1)) != expected:
+                    return False, (
+                        f"final report metric mismatch for {labels[0]}: "
+                        f"expected {expected}, got {match.group(1)}"
+                    )
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+            return False, f"final report consistency check failed: {error}"
     return True, "validated"
 
 
@@ -465,13 +677,30 @@ def prepare_run(workflow: dict[str, Any], run_dir: Path, target: Path) -> dict[s
         int(workflow.get("snapshot", {}).get("max_file_bytes", 2_097_152)),
     )
     atomic_json(run_dir / "shared" / "snapshot-manifest.json", snapshot_stats)
+    prepare_shared_contracts(workflow, run_dir)
     index_snapshot(
         run_dir,
         run_dir / "shared" / "target-snapshot",
         workflow.get("snapshot", {}).get("analysis", "structural"),
     )
+    cells = prepare_agent_cells(
+        workflow,
+        run_dir,
+        (
+            {
+                "id": stage["id"],
+                "profile": stage["profile"],
+                "skills": stage.get("skills", []),
+                "profile_source": ROOT / stage["profile_file"],
+            }
+            for stage in workflow["stages"]
+        ),
+    )
     for stage in workflow["stages"]:
-        atomic_json(run_dir / "inbox" / f"{stage['task_id']}.task.json", task_document(stage, run_dir))
+        document = task_document(stage, run_dir)
+        document["agent_profile"] = stage["profile"]
+        document["agent_cell"] = cells[stage["id"]]
+        atomic_json(run_dir / "inbox" / f"{stage['task_id']}.task.json", document)
     state = {
         "schema": "hutch.state.v1",
         "run_id": run_dir.name,
@@ -480,7 +709,18 @@ def prepare_run(workflow: dict[str, Any], run_dir: Path, target: Path) -> dict[s
         "created_at": now(),
         "target_fingerprint": fingerprint,
         "snapshot": snapshot_stats,
-        "stages": {stage["id"]: {"status": "pending", "task_id": stage["task_id"]} for stage in workflow["stages"]},
+        "campaign": workflow.get("campaign"),
+        "agent_cells": cells,
+        "stages": {
+            stage["id"]: {
+                "status": "pending",
+                "task_id": stage["task_id"],
+                "agent_profile": stage["profile"],
+                "agent_cell": stage["id"],
+                "workspace": cells[stage["id"]]["workspace"],
+            }
+            for stage in workflow["stages"]
+        },
     }
     atomic_json(run_dir / "state.json", state)
     append_event(run_dir, "run_prepared", fingerprint=fingerprint, snapshot=snapshot_stats)
@@ -523,7 +763,7 @@ def run_stage(
         stage["profile"],
         provider,
         f"hutch-{run_dir.name}-{stage['id']}-a{attempt}",
-        run_dir,
+        Path(stage_state["workspace"]),
         (
             f"Execute Rabbit Hutch task {task_path}. Read the JSON contract exactly. "
             f"Write {stage['artifact']} and then outbox/{stage['task_id']}.result.json. "
@@ -584,10 +824,34 @@ def main() -> int:
         state.pop("error", None)
         state.pop("failed_at", None)
         atomic_json(run_dir / "workflow.json", workflow)
+        cells = prepare_agent_cells(
+            workflow,
+            run_dir,
+            (
+                {
+                    "id": stage["id"],
+                    "profile": stage["profile"],
+                    "skills": stage.get("skills", []),
+                    "profile_source": ROOT / stage["profile_file"],
+                }
+                for stage in workflow["stages"]
+            ),
+        )
+        state["agent_cells"] = cells
         for stage in workflow["stages"]:
+            document = task_document(stage, run_dir)
+            document["agent_profile"] = stage["profile"]
+            document["agent_cell"] = cells[stage["id"]]
             atomic_json(
                 run_dir / "inbox" / f"{stage['task_id']}.task.json",
-                task_document(stage, run_dir),
+                document,
+            )
+            state["stages"][stage["id"]].update(
+                {
+                    "agent_profile": stage["profile"],
+                    "agent_cell": stage["id"],
+                    "workspace": cells[stage["id"]]["workspace"],
+                }
             )
         atomic_json(run_dir / "state.json", state)
     else:
@@ -600,13 +864,20 @@ def main() -> int:
 
     runtime = CaoRuntime(args.cao_repo, args.cao_url)
     runtime.require_healthy()
-    default_provider = workflow.get("provider", "codex")
-    installs = {
-        (stage["profile_file"], stage.get("provider", default_provider))
-        for stage in workflow["stages"]
-    }
-    for profile, provider in sorted(installs):
-        runtime.install(ROOT / profile, provider)
+    default_provider = workflow.get("provider", "opencode_cli")
+    installs: dict[tuple[str, str, str], list[tuple[str, list[str]]]] = {}
+    for stage in workflow["stages"]:
+        key = (
+            stage["profile_file"],
+            stage.get("provider", default_provider),
+            stage["profile"],
+        )
+        installs.setdefault(key, []).append((stage["id"], stage.get("skills", [])))
+    for (profile_file, provider, profile), cell_skills in sorted(installs.items()):
+        profile_path = ROOT / profile_file
+        runtime.install(profile_path, provider)
+        if provider == "opencode_cli":
+            install_opencode_agent_policy(profile_path, profile, cell_skills)
     try:
         for stage in workflow["stages"]:
             run_stage(

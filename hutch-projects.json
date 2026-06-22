@@ -1,0 +1,10 @@
+{
+  "projects": [
+    {
+      "id": "pentest-gym",
+      "name": "Pentest Gym",
+      "root": "/Users/wh4lter/Workspace/pentest_gym"
+    }
+  ],
+  "schema": "hutch.projects.v1"
+}

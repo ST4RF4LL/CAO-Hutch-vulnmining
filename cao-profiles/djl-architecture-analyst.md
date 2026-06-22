@@ -1,7 +1,7 @@
 ---
 name: djl-architecture-analyst
 description: Maps DJL architecture, runtime boundaries, entry points, and security-relevant data flows.
-provider: codex
+provider: opencode_cli
 role: reviewer
 allowedTools:
   - fs_read

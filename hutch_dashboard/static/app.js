@@ -1,4 +1,43 @@
-const state = { runs: [], selectedRun: null, selectedPath: null, selectedGraph: null, graphMode: "execution" };
+const TREE_COLLAPSE_STORAGE = "hutch.collapsed-project-nodes.v1";
+const PROJECT_ONLY_STORAGE = "hutch.project-only.v1";
+
+const loadStoredSet = key => {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(value) ? value.filter(item => typeof item === "string") : []);
+  } catch (_error) {
+    return new Set();
+  }
+};
+
+const loadStoredBoolean = key => {
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch (_error) {
+    return false;
+  }
+};
+
+const state = {
+  projects: [],
+  runs: [],
+  campaigns: [],
+  selectedProject: null,
+  view: "projects",
+  selectedRun: null,
+  selectedCampaign: null,
+  selectedPath: null,
+  artifactMode: "rendered",
+  selectedGraph: null,
+  graphMode: "execution",
+  graphView: { scale: 1, x: 0, y: 0 },
+  terminalId: null,
+  terminalTimer: null,
+  caoCatalog: null,
+  pendingDeleteRun: null,
+  collapsedProjectNodes: loadStoredSet(TREE_COLLAPSE_STORAGE),
+  projectOnly: loadStoredBoolean(PROJECT_ONLY_STORAGE),
+};
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const node = (tag, className, text) => {
@@ -7,6 +46,51 @@ const node = (tag, className, text) => {
   if (text !== undefined && text !== null) value.textContent = String(text);
   return value;
 };
+
+const persistViewPreferences = () => {
+  try {
+    localStorage.setItem(TREE_COLLAPSE_STORAGE, JSON.stringify([...state.collapsedProjectNodes]));
+    localStorage.setItem(PROJECT_ONLY_STORAGE, String(state.projectOnly));
+  } catch (_error) {
+    // The dashboard remains functional when browser storage is unavailable.
+  }
+};
+
+const treeNodeKey = (projectId, itemId) => `${projectId}:${itemId}`;
+
+function bindCollapsible(trigger, content, key) {
+  trigger.dataset.collapseKey = key;
+  content.dataset.collapseContent = key;
+  const apply = (currentTrigger = trigger, currentContent = content) => {
+    const collapsed = state.collapsedProjectNodes.has(key);
+    currentContent.hidden = collapsed;
+    currentTrigger.setAttribute("aria-expanded", String(!collapsed));
+    currentTrigger.title = collapsed ? "展开" : "收起";
+    const currentIndicator = currentTrigger.querySelector(".tree-chevron");
+    if (currentIndicator) currentIndicator.textContent = collapsed ? "▸" : "▾";
+  };
+  trigger.addEventListener("click", event => {
+    event.stopPropagation();
+    if (state.collapsedProjectNodes.has(key)) state.collapsedProjectNodes.delete(key);
+    else state.collapsedProjectNodes.add(key);
+    persistViewPreferences();
+    const triggers = [...document.querySelectorAll("[data-collapse-key]")]
+      .filter(item => item.dataset.collapseKey === key);
+    const contents = [...document.querySelectorAll("[data-collapse-content]")]
+      .filter(item => item.dataset.collapseContent === key);
+    triggers.forEach((item, index) => apply(item, contents[index] || content));
+  });
+  apply();
+}
+
+function updateProjectOnlyControl() {
+  const button = document.querySelector("#project-only");
+  button.setAttribute("aria-pressed", String(state.projectOnly));
+  button.classList.toggle("active", state.projectOnly);
+  button.title = state.projectOnly
+    ? "恢复显示 Campaign、Flow 和报告"
+    : "隐藏所有 Flow，只显示项目目录与微服务";
+}
 
 const formatTime = value => {
   if (!value) return "—";
@@ -33,14 +117,68 @@ async function fetchJSON(url) {
   return response.json();
 }
 
+async function postJSON(url, value) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+  return payload;
+}
+
+async function deleteJSON(url) {
+  const response = await fetch(url, { method: "DELETE" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+  return payload;
+}
+
+const deletableRun = run => !["launching", "running"].includes(run.status);
+
+async function deleteRun(run) {
+  if (!deletableRun(run)) return;
+  state.pendingDeleteRun = run;
+  document.querySelector("#delete-message").textContent = `确定删除 ${run.workflow} 的这次 Flow 运行记录吗？`;
+  document.querySelector("#delete-run-id").textContent = run.run_id;
+  document.querySelector("#delete-error").hidden = true;
+  const confirm = document.querySelector("#delete-confirm");
+  confirm.disabled = false;
+  confirm.textContent = "确认删除";
+  const dialog = document.querySelector("#delete-dialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+const stripAnsi = value => String(value || "")
+  .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+  .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+  .replace(/\r/g, "");
+
 async function loadRuns() {
   const count = document.querySelector("#run-count");
   count.textContent = "加载中";
   try {
-    state.runs = await fetchJSON("/api/runs");
-    count.textContent = `${state.runs.length} 个已完成实例`;
+    [state.projects, state.campaigns] = await Promise.all([
+      fetchJSON("/api/projects"),
+      fetchJSON("/api/campaigns"),
+    ]);
+    state.runs = state.projects.flatMap(project => project.flows || []);
+    const serviceCount = state.projects.reduce((total, project) => total + (project.service_count || 0), 0);
+    count.textContent = state.projectOnly
+      ? `${state.projects.length} 项目 · ${serviceCount} 微服务`
+      : `${state.projects.length} 项目 · ${state.campaigns.length} 总 Flow · ${state.runs.length} 子 Flow`;
+    updateProjectOnlyControl();
     renderRunList();
-    if (state.runs.length && !state.selectedRun) await selectRun(state.runs[0].run_id);
+    const selectedId = state.selectedRun?.run_id;
+    const selectedCampaignId = state.selectedCampaign?.instance_id;
+    if (!state.projectOnly && state.view === "flow" && selectedId && state.runs.some(run => run.run_id === selectedId)) {
+      await selectRun(selectedId);
+    } else if (!state.projectOnly && state.view === "campaign" && selectedCampaignId && state.campaigns.some(item => item.instance_id === selectedCampaignId)) {
+      await selectCampaign(selectedCampaignId);
+    } else if (state.projects.length) {
+      selectProject(state.selectedProject?.id || state.projects[0].id);
+    }
   } catch (error) {
     count.textContent = "加载失败";
     document.querySelector("#run-list").replaceChildren(node("div", "error", error.message));
@@ -50,18 +188,114 @@ async function loadRuns() {
 function renderRunList() {
   const list = document.querySelector("#run-list");
   list.replaceChildren();
-  for (const run of state.runs) {
-    const button = node("button", `run-item${state.selectedRun?.run_id === run.run_id ? " active" : ""}`);
-    button.type = "button";
-    button.append(node("span", "run-name", run.workflow));
-    button.append(node("span", "run-id", run.run_id));
-    const meta = node("span", "run-meta");
-    meta.append(node("span", "status", run.status));
-    meta.append(node("span", "", formatTime(run.finished_at)));
-    button.append(meta);
-    button.addEventListener("click", () => selectRun(run.run_id));
-    list.append(button);
+  for (const project of state.projects) {
+    const group = node("section", `project-group${state.selectedProject?.id === project.id ? " active" : ""}`);
+    const header = node("div", "project-header");
+    const collapse = node("button", "tree-collapse-toggle");
+    collapse.type = "button";
+    collapse.setAttribute("aria-label", `收起或展开项目 ${project.name}`);
+    const indicator = node("span", "tree-chevron", "▾");
+    collapse.append(indicator);
+    const select = node("button", "project-select");
+    select.type = "button";
+    const identity = node("div", "project-identity");
+    identity.append(node("span", "project-name", project.name), node("span", "project-path", project.root_path || project.repo_path));
+    select.append(identity);
+    select.addEventListener("click", () => selectProject(project.id));
+    header.append(collapse, select, node("span", "project-count", project.service_count));
+    group.append(header);
+    const tree = node("div", "project-tree-sidebar");
+    renderSidebarTree(project.tree?.children || [], tree, project.id, 0);
+    bindCollapsible(collapse, tree, `project:${project.id}`);
+    group.append(tree);
+    list.append(group);
   }
+}
+
+function renderSidebarTree(items, container, projectId, depth) {
+  for (const item of items) {
+    const key = treeNodeKey(projectId, item.id);
+    if (item.type === "directory") {
+      const branch = node("section", "sidebar-tree-branch");
+      branch.style.setProperty("--tree-depth", depth);
+      const title = node("button", "sidebar-tree-title tree-collapse-trigger");
+      title.type = "button";
+      const indicator = node("span", "tree-chevron", "▾");
+      const label = node("span", "tree-folder");
+      label.append(indicator, node("span", "", item.name));
+      title.append(label, node("span", "", `${item.service_count} 服务`));
+      branch.append(title);
+      const children = node("div", "sidebar-tree-children");
+      renderSidebarTree(item.children || [], children, projectId, depth + 1);
+      bindCollapsible(title, children, key);
+      branch.append(children);
+      container.append(branch);
+      continue;
+    }
+    const serviceBox = node("div", "sidebar-service");
+    serviceBox.style.setProperty("--tree-depth", depth);
+    const serviceTitle = node(
+      state.projectOnly ? "div" : "button",
+      `sidebar-service-title${state.projectOnly ? "" : " tree-collapse-trigger"}`,
+    );
+    if (!state.projectOnly) serviceTitle.type = "button";
+    const indicator = node(
+      "span",
+      state.projectOnly ? "tree-leaf-marker" : "tree-chevron",
+      state.projectOnly ? "•" : "▾",
+    );
+    const label = node("span", "tree-folder");
+    label.append(indicator, node("span", "", item.name));
+    serviceTitle.append(
+      label,
+      node("span", "", state.projectOnly ? "微服务" : `${item.flow_count} Flow`),
+    );
+    serviceBox.append(serviceTitle);
+    if (!state.projectOnly) {
+      const flowContent = node("div", "sidebar-service-content");
+      const campaigns = state.campaigns.filter(campaign => campaign.service?.id === item.id);
+      for (const campaign of campaigns) {
+        const button = node("button", `run-item campaign-item${state.selectedCampaign?.instance_id === campaign.instance_id ? " active" : ""}`);
+        button.type = "button";
+        button.append(node("span", "campaign-badge", "总 FLOW"));
+        button.append(node("span", "run-name", campaign.campaign_id));
+        button.append(node("span", "run-id", `${campaign.flow_count} 个子 Flow · ${campaign.phases.join(" → ")}`));
+        const meta = node("span", "run-meta");
+        meta.append(node("span", `status status-${campaign.status}`, campaign.status));
+        meta.append(node("span", "", `${campaign.stages_done}/${campaign.stages_total} stages`));
+        button.append(meta);
+        button.addEventListener("click", () => selectCampaign(campaign.instance_id));
+        flowContent.append(button);
+      }
+      for (const run of item.flows || []) {
+        const button = node("button", `run-item${state.selectedRun?.run_id === run.run_id ? " active" : ""}`);
+        button.type = "button";
+        button.append(node("span", "run-name", run.workflow));
+        button.append(node("span", "run-id", run.run_id));
+        const meta = node("span", "run-meta");
+        meta.append(node("span", `status status-${run.status}`, run.status));
+        meta.append(node("span", "", formatTime(run.finished_at)));
+        button.append(meta);
+        button.addEventListener("click", () => selectRun(run.run_id));
+        flowContent.append(button);
+      }
+      bindCollapsible(serviceTitle, flowContent, key);
+      serviceBox.append(flowContent);
+    }
+    container.append(serviceBox);
+  }
+}
+
+function selectProject(projectId) {
+  const project = state.projects.find(item => item.id === projectId);
+  if (!project) return;
+  state.selectedProject = project;
+  state.selectedRun = null;
+  state.selectedCampaign = null;
+  state.selectedPath = null;
+  state.view = "projects";
+  renderRunList();
+  renderProjectDetail(project);
 }
 
 async function selectRun(runId) {
@@ -69,19 +303,46 @@ async function selectRun(runId) {
   detail.replaceChildren(node("div", "empty-state", "正在读取 Flow 证据…"));
   try {
     state.selectedRun = await fetchJSON(`/api/runs/${encodeURIComponent(runId)}`);
+    state.selectedCampaign = null;
+    state.selectedProject = state.projects.find(project => project.id === state.selectedRun.project?.id)
+      || state.selectedRun.project;
+    state.view = "flow";
     const preferred = state.selectedRun.deliverables.find(item => item.path.includes("final-report"))
       || state.selectedRun.deliverables.find(item => item.kind === "final")
       || state.selectedRun.deliverables[0];
     state.selectedPath = preferred?.path || null;
+    state.artifactMode = preferred?.path?.toLowerCase().endsWith(".md") ? "rendered" : "raw";
     const graphNodes = state.selectedRun.graph?.nodes || [];
     state.selectedGraph = graphNodes.length
       ? { type: "node", id: graphNodes[graphNodes.length - 1].id }
       : null;
     state.graphMode = "execution";
+    state.graphView = { scale: 1, x: 0, y: 0 };
     renderRunList();
     renderDetail();
   } catch (error) {
     detail.replaceChildren(node("div", "error", `读取实例失败：${error.message}`));
+  }
+}
+
+async function selectCampaign(instanceId) {
+  const detail = document.querySelector("#detail");
+  detail.replaceChildren(node("div", "empty-state", "正在整合 Campaign 证据…"));
+  try {
+    state.selectedCampaign = await fetchJSON(`/api/campaigns/${encodeURIComponent(instanceId)}`);
+    state.selectedRun = null;
+    state.selectedProject = state.projects.find(project => project.id === state.selectedCampaign.project?.id)
+      || state.selectedCampaign.project;
+    state.view = "campaign";
+    const graphNodes = state.selectedCampaign.graph?.nodes || [];
+    state.selectedGraph = graphNodes.length
+      ? { type: "node", id: graphNodes[graphNodes.length - 1].id }
+      : null;
+    state.graphView = { scale: 1, x: 0, y: 0 };
+    renderRunList();
+    renderCampaignDetail();
+  } catch (error) {
+    detail.replaceChildren(node("div", "error", `读取总 Flow 失败：${error.message}`));
   }
 }
 
@@ -190,7 +451,15 @@ function graphInspector(run) {
   panel.append(node("h5", "", `CAO 执行 ${agent.assignments.length}`));
   for (const assignment of agent.assignments) {
     const text = [assignment.session, assignment.terminal_id, assignment.window].filter(Boolean).join(" / ");
-    panel.append(node("div", "graph-runtime", text || "未记录 runtime 标识"));
+    const runtime = node("div", "graph-runtime");
+    runtime.append(node("span", "", text || "未记录 runtime 标识"));
+    if (assignment.terminal_id) {
+      const enter = node("button", "terminal-open", "打开终端");
+      enter.type = "button";
+      enter.addEventListener("click", () => openTerminal(assignment, agent));
+      runtime.append(enter);
+    }
+    panel.append(runtime);
   }
   panel.append(node("h5", "", `交付物 ${agent.deliverables.length}`));
   const files = node("div", "graph-files");
@@ -231,6 +500,10 @@ function renderFlowGraph(run) {
   marker.append(svgNode("path", { d: "M 0 0 L 10 5 L 0 10 z", class: "arrow-head" }));
   defs.append(marker);
   svg.append(defs);
+  const viewport = svgNode("g", {
+    class: "graph-viewport",
+    transform: `translate(${state.graphView.x} ${state.graphView.y}) scale(${state.graphView.scale})`,
+  });
 
   for (const edge of visibleEdges) {
     const source = layout.positions[edge.source];
@@ -251,7 +524,7 @@ function renderFlowGraph(run) {
     const activate = () => { state.selectedGraph = { type: "edge", id: edge.id }; renderDetail(); };
     group.addEventListener("click", activate);
     group.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") activate(); });
-    svg.append(group);
+    viewport.append(group);
   }
 
   for (const item of graph.nodes) {
@@ -274,10 +547,11 @@ function renderFlowGraph(run) {
     const activate = () => { state.selectedGraph = { type: "node", id: item.id }; renderDetail(); };
     group.addEventListener("click", activate);
     group.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") activate(); });
-    svg.append(group);
+    viewport.append(group);
   }
+  svg.append(viewport);
   canvas.append(svg);
-  const controls = node("div", "graph-controls");
+  const controls = node("div", "graph-controls graph-mode-controls");
   for (const [mode, label] of [["execution", "执行依赖"], ["data", "完整产物流"]]) {
     const button = node("button", state.graphMode === mode ? "active" : "", label);
     button.type = "button";
@@ -292,6 +566,44 @@ function renderFlowGraph(run) {
     controls.append(button);
   }
   canvas.append(controls);
+  const zoomControls = node("div", "graph-controls graph-zoom-controls");
+  const zoomLabel = node("span", "graph-zoom-label", `${Math.round(state.graphView.scale * 100)}%`);
+  const applyGraphView = () => {
+    viewport.setAttribute(
+      "transform",
+      `translate(${state.graphView.x} ${state.graphView.y}) scale(${state.graphView.scale})`,
+    );
+    zoomLabel.textContent = `${Math.round(state.graphView.scale * 100)}%`;
+  };
+  const setZoom = (nextScale, anchorX = layout.width / 2, anchorY = layout.height / 2) => {
+    const previous = state.graphView.scale;
+    const scale = Math.min(2.5, Math.max(0.4, nextScale));
+    if (scale === previous) return;
+    state.graphView.x = anchorX - ((anchorX - state.graphView.x) * scale) / previous;
+    state.graphView.y = anchorY - ((anchorY - state.graphView.y) * scale) / previous;
+    state.graphView.scale = scale;
+    applyGraphView();
+  };
+  for (const [label, title, action] of [
+    ["−", "缩小", () => setZoom(state.graphView.scale / 1.2)],
+    ["重置", "重置缩放", () => { state.graphView = { scale: 1, x: 0, y: 0 }; applyGraphView(); }],
+    ["+", "放大", () => setZoom(state.graphView.scale * 1.2)],
+  ]) {
+    const button = node("button", "", label);
+    button.type = "button";
+    button.title = title;
+    button.addEventListener("click", action);
+    zoomControls.append(button);
+  }
+  zoomControls.insertBefore(zoomLabel, zoomControls.children[1]);
+  canvas.append(zoomControls);
+  svg.addEventListener("wheel", event => {
+    event.preventDefault();
+    const bounds = svg.getBoundingClientRect();
+    const anchorX = ((event.clientX - bounds.left) / bounds.width) * layout.width;
+    const anchorY = ((event.clientY - bounds.top) / bounds.height) * layout.height;
+    setZoom(state.graphView.scale * Math.exp(-event.deltaY * 0.0015), anchorX, anchorY);
+  }, { passive: false });
   const legend = node("div", "graph-legend");
   for (const [className, text] of [["dispatch", "CAO dispatch"], ["dependency", "dependency"], ["data", "artifact data"]]) {
     const item = node("span");
@@ -303,13 +615,179 @@ function renderFlowGraph(run) {
   return workspace;
 }
 
+const phaseName = phase => ({ recon: "信息收集 / 威胁建模", planning: "审计编排", mining: "审计 / 挖掘" }[phase] || phase || "Flow");
+
+async function openCampaignArtifact(flow, path) {
+  await selectRun(flow.run_id);
+  state.selectedPath = path;
+  state.artifactMode = path.toLowerCase().endsWith(".md") ? "rendered" : "raw";
+  renderDetail();
+  document.querySelector("#flow-artifacts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function campaignInspector(campaign) {
+  const panel = node("aside", "graph-inspector campaign-inspector");
+  const selection = state.selectedGraph;
+  if (!selection) {
+    panel.append(node("div", "graph-empty", "点击子 Flow 或 handoff 连线查看详情。"));
+    return panel;
+  }
+  if (selection.type === "edge") {
+    const edge = campaign.graph.edges.find(item => item.id === selection.id);
+    const source = campaign.flows.find(flow => flow.run_id === edge?.source);
+    const target = campaign.flows.find(flow => flow.run_id === edge?.target);
+    if (!edge || !source || !target) return panel;
+    panel.append(node("p", "eyebrow", "Campaign handoff"));
+    panel.append(node("h4", "", `${phaseName(source.phase)} → ${phaseName(target.phase)}`));
+    panel.append(node("p", "graph-description", "上游 Flow 的持久化产物经 Hutch 校验后，作为下游 Flow 的输入契约。两个 CAO Flow 仍可独立查看和操作。"));
+    panel.append(fact("上游", source.workflow), fact("下游", target.workflow));
+    return panel;
+  }
+  const flow = campaign.flows.find(item => item.run_id === selection.id);
+  if (!flow) return panel;
+  panel.append(node("p", "eyebrow", phaseName(flow.phase)));
+  panel.append(node("h4", "", flow.workflow));
+  panel.append(
+    fact("状态", flow.status),
+    fact("Stage", `${flow.agents.filter(agent => agent.stage !== "flow-supervisor").length} / ${flow.stage_count}`),
+    fact("CAO Session", flow.cao_session || "未记录"),
+  );
+  if (flow.summary) panel.append(node("p", "graph-description", flow.summary));
+  const open = node("button", "campaign-open-flow", "打开这个子 Flow");
+  open.type = "button";
+  open.addEventListener("click", () => selectRun(flow.run_id));
+  panel.append(open);
+  panel.append(node("h5", "", `交付物 ${flow.deliverables.length}`));
+  const files = node("div", "graph-files");
+  for (const item of flow.deliverables.slice(0, 12)) {
+    const button = node("button", "graph-file", item.path);
+    button.type = "button";
+    button.addEventListener("click", () => openCampaignArtifact(flow, item.path));
+    files.append(button);
+  }
+  if (flow.deliverables.length > 12) files.append(node("span", "graph-muted", `其余 ${flow.deliverables.length - 12} 个产物请进入子 Flow 查看。`));
+  panel.append(files);
+  return panel;
+}
+
+function renderCampaignGraph(campaign) {
+  const workspace = node("div", "graph-workspace card campaign-graph-workspace");
+  const canvas = node("div", "graph-canvas");
+  const graph = campaign.graph || { nodes: [], edges: [] };
+  const layout = graphLayout(graph);
+  const svg = svgNode("svg", {
+    class: "flow-graph campaign-graph",
+    viewBox: `0 0 ${layout.width} ${layout.height}`,
+    role: "img",
+    "aria-label": `${campaign.campaign_id} overall flow graph`,
+  });
+  const defs = svgNode("defs");
+  const marker = svgNode("marker", { id: "campaign-arrow", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
+  marker.append(svgNode("path", { d: "M 0 0 L 10 5 L 0 10 z", class: "arrow-head" }));
+  defs.append(marker);
+  svg.append(defs);
+  const viewport = svgNode("g", {
+    class: "graph-viewport",
+    transform: `translate(${state.graphView.x} ${state.graphView.y}) scale(${state.graphView.scale})`,
+  });
+  for (const edge of graph.edges) {
+    const source = layout.positions[edge.source];
+    const target = layout.positions[edge.target];
+    if (!source || !target) continue;
+    const x1 = source.x + 83;
+    const x2 = target.x - 83;
+    const bend = Math.max(35, (x2 - x1) * 0.45);
+    const pathValue = `M ${x1} ${source.y} C ${x1 + bend} ${source.y}, ${x2 - bend} ${target.y}, ${x2} ${target.y}`;
+    const selected = state.selectedGraph?.type === "edge" && state.selectedGraph.id === edge.id;
+    const group = svgNode("g", {
+      class: `graph-edge edge-handoff${connectedToSelection(edge) ? " connected" : ""}${selected ? " selected" : ""}`,
+      tabindex: 0,
+      role: "button",
+      "aria-label": `${edge.source} handoff to ${edge.target}`,
+    });
+    group.append(svgNode("path", { d: pathValue, class: "edge-visible", "marker-end": "url(#campaign-arrow)" }));
+    group.append(svgNode("path", { d: pathValue, class: "edge-hit" }));
+    const activate = () => { state.selectedGraph = { type: "edge", id: edge.id }; renderCampaignDetail(); };
+    group.addEventListener("click", activate);
+    group.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") activate(); });
+    viewport.append(group);
+  }
+  for (const item of graph.nodes) {
+    const position = layout.positions[item.id];
+    const selected = state.selectedGraph?.type === "node" && state.selectedGraph.id === item.id;
+    const group = svgNode("g", {
+      class: `graph-node node-flow phase-${item.phase}${selected ? " selected" : ""}`,
+      transform: `translate(${position.x - 83} ${position.y - 36})`,
+      tabindex: 0,
+      role: "button",
+      "aria-label": item.label,
+    });
+    group.append(svgNode("rect", { width: 166, height: 72, rx: 11 }));
+    const label = svgNode("text", { x: 13, y: 27, class: "node-label" });
+    label.textContent = shortLabel(phaseName(item.phase));
+    const stage = svgNode("text", { x: 13, y: 48, class: "node-stage" });
+    stage.textContent = shortLabel(item.label);
+    group.append(label, stage, svgNode("circle", { cx: 151, cy: 17, r: 5, class: "node-status" }));
+    const activate = () => { state.selectedGraph = { type: "node", id: item.id }; renderCampaignDetail(); };
+    group.addEventListener("click", activate);
+    group.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") activate(); });
+    viewport.append(group);
+  }
+  svg.append(viewport);
+  canvas.append(svg);
+  const zoomControls = node("div", "graph-controls graph-zoom-controls");
+  const zoomLabel = node("span", "graph-zoom-label", `${Math.round(state.graphView.scale * 100)}%`);
+  const applyGraphView = () => {
+    viewport.setAttribute("transform", `translate(${state.graphView.x} ${state.graphView.y}) scale(${state.graphView.scale})`);
+    zoomLabel.textContent = `${Math.round(state.graphView.scale * 100)}%`;
+  };
+  const setZoom = (nextScale, anchorX = layout.width / 2, anchorY = layout.height / 2) => {
+    const previous = state.graphView.scale;
+    const scale = Math.min(2.5, Math.max(0.4, nextScale));
+    if (scale === previous) return;
+    state.graphView.x = anchorX - ((anchorX - state.graphView.x) * scale) / previous;
+    state.graphView.y = anchorY - ((anchorY - state.graphView.y) * scale) / previous;
+    state.graphView.scale = scale;
+    applyGraphView();
+  };
+  for (const [label, title, action] of [
+    ["−", "缩小", () => setZoom(state.graphView.scale / 1.2)],
+    ["重置", "重置缩放", () => { state.graphView = { scale: 1, x: 0, y: 0 }; applyGraphView(); }],
+    ["+", "放大", () => setZoom(state.graphView.scale * 1.2)],
+  ]) {
+    const button = node("button", "", label);
+    button.type = "button";
+    button.title = title;
+    button.addEventListener("click", action);
+    zoomControls.append(button);
+  }
+  zoomControls.insertBefore(zoomLabel, zoomControls.children[1]);
+  canvas.append(zoomControls);
+  svg.addEventListener("wheel", event => {
+    event.preventDefault();
+    const bounds = svg.getBoundingClientRect();
+    setZoom(
+      state.graphView.scale * Math.exp(-event.deltaY * 0.0015),
+      ((event.clientX - bounds.left) / bounds.width) * layout.width,
+      ((event.clientY - bounds.top) / bounds.height) * layout.height,
+    );
+  }, { passive: false });
+  const legend = node("div", "graph-legend");
+  const legendItem = node("span");
+  legendItem.append(node("i", "legend-handoff"), document.createTextNode("validated handoff"));
+  legend.append(legendItem);
+  canvas.append(legend);
+  workspace.append(canvas, campaignInspector(campaign));
+  return workspace;
+}
+
 function fact(label, value) {
   const box = node("div", "fact");
   box.append(node("label", "", label), node("span", "", value || "—"));
   return box;
 }
 
-function assignmentBlock(item, index) {
+function assignmentBlock(item, index, agent) {
   const box = node("div", "assignment");
   const values = [
     ["执行", `#${index + 1}${item.attempt ? ` / attempt ${item.attempt}` : ""}`],
@@ -322,6 +800,14 @@ function assignmentBlock(item, index) {
     const line = node("div", "assignment-line");
     line.append(node("label", "", label), node("span", "", value));
     box.append(line);
+  }
+  if (item.terminal_id) {
+    const actions = node("div", "assignment-actions");
+    const enter = node("button", "terminal-open", "打开终端");
+    enter.type = "button";
+    enter.addEventListener("click", () => openTerminal(item, agent));
+    actions.append(enter);
+    box.append(actions);
   }
   return box;
 }
@@ -342,13 +828,188 @@ function renderAgent(agent) {
     fact("完成", formatTime(agent.finished_at)),
   );
   card.append(facts);
-  for (const [index, assignment] of agent.assignments.entries()) card.append(assignmentBlock(assignment, index));
+  for (const [index, assignment] of agent.assignments.entries()) card.append(assignmentBlock(assignment, index, agent));
   if (agent.deliverables.length) {
     const line = node("div", "assignment-line");
     line.append(node("label", "", "交付物"), node("span", "", agent.deliverables.map(item => item.path).join(" · ")));
     card.append(line);
   }
   return card;
+}
+
+function appendInlineMarkdown(parent, text) {
+  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\[[^\]\n]+\]\([^\s)]+(?:\s+"[^"]*")?\))/g;
+  let offset = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > offset) parent.append(document.createTextNode(text.slice(offset, match.index)));
+    const token = match[0];
+    if (token.startsWith("`")) {
+      parent.append(node("code", "markdown-inline-code", token.slice(1, -1)));
+    } else if (token.startsWith("**") || token.startsWith("__")) {
+      const strong = node("strong");
+      appendInlineMarkdown(strong, token.slice(2, -2));
+      parent.append(strong);
+    } else if (token.startsWith("~~")) {
+      const strike = node("s");
+      appendInlineMarkdown(strike, token.slice(2, -2));
+      parent.append(strike);
+    } else {
+      const parsed = token.match(/^\[([^\]]+)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)$/);
+      const label = parsed?.[1] || token;
+      const href = parsed?.[2] || "";
+      if (/^(https?:|mailto:|#)/i.test(href)) {
+        const link = node("a", "markdown-link", label);
+        link.href = href;
+        if (/^https?:/i.test(href)) {
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+        }
+        if (parsed?.[3]) link.title = parsed[3];
+        parent.append(link);
+      } else {
+        parent.append(document.createTextNode(label));
+      }
+    }
+    offset = match.index + token.length;
+  }
+  if (offset < text.length) parent.append(document.createTextNode(text.slice(offset)));
+}
+
+const markdownCells = line => {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split("|").map(value => value.trim());
+};
+
+const markdownTableDivider = line => {
+  const cells = markdownCells(line);
+  return cells.length > 0 && cells.every(value => /^:?-{3,}:?$/.test(value));
+};
+
+const markdownBlockStart = (lines, index) => {
+  const line = lines[index] || "";
+  return !line.trim()
+    || /^\s*```/.test(line)
+    || /^\s{0,3}#{1,6}\s+/.test(line)
+    || /^\s{0,3}(?:[-*_]\s*){3,}$/.test(line)
+    || /^\s*>\s?/.test(line)
+    || /^\s*[-*+]\s+/.test(line)
+    || /^\s*\d+[.)]\s+/.test(line)
+    || (index + 1 < lines.length && line.includes("|") && markdownTableDivider(lines[index + 1]));
+};
+
+function renderMarkdown(markdown) {
+  const root = node("div", "markdown-body");
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+    const fence = line.match(/^\s*```\s*([A-Za-z0-9_+.-]*)\s*$/);
+    if (fence) {
+      index += 1;
+      const codeLines = [];
+      while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const pre = node("pre", "markdown-code-block");
+      const code = node("code", fence[1] ? `language-${fence[1]}` : "", codeLines.join("\n"));
+      pre.append(code);
+      root.append(pre);
+      continue;
+    }
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      const value = document.createElement(`h${heading[1].length}`);
+      appendInlineMarkdown(value, heading[2]);
+      root.append(value);
+      index += 1;
+      continue;
+    }
+    if (/^\s{0,3}(?:[-*_]\s*){3,}$/.test(line)) {
+      root.append(document.createElement("hr"));
+      index += 1;
+      continue;
+    }
+    if (index + 1 < lines.length && line.includes("|") && markdownTableDivider(lines[index + 1])) {
+      const table = node("table", "markdown-table");
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      for (const cell of markdownCells(line)) {
+        const th = document.createElement("th");
+        appendInlineMarkdown(th, cell);
+        headRow.append(th);
+      }
+      head.append(headRow);
+      table.append(head);
+      index += 2;
+      const body = document.createElement("tbody");
+      while (index < lines.length && lines[index].trim() && lines[index].includes("|")) {
+        const row = document.createElement("tr");
+        for (const cell of markdownCells(lines[index])) {
+          const td = document.createElement("td");
+          appendInlineMarkdown(td, cell);
+          row.append(td);
+        }
+        body.append(row);
+        index += 1;
+      }
+      table.append(body);
+      root.append(table);
+      continue;
+    }
+    if (/^\s*>\s?/.test(line)) {
+      const quote = document.createElement("blockquote");
+      const values = [];
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        values.push(lines[index].replace(/^\s*>\s?/, ""));
+        index += 1;
+      }
+      appendInlineMarkdown(quote, values.join(" "));
+      root.append(quote);
+      continue;
+    }
+    const unordered = /^\s*[-*+]\s+/.test(line);
+    const ordered = /^\s*\d+[.)]\s+/.test(line);
+    if (unordered || ordered) {
+      const list = document.createElement(ordered ? "ol" : "ul");
+      const matcher = ordered ? /^\s*\d+[.)]\s+(.+)$/ : /^\s*[-*+]\s+(.+)$/;
+      while (index < lines.length) {
+        const itemMatch = lines[index].match(matcher);
+        if (!itemMatch) break;
+        const item = document.createElement("li");
+        const task = itemMatch[1].match(/^\[([ xX])\]\s+(.+)$/);
+        if (task) {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = task[1].toLowerCase() === "x";
+          checkbox.disabled = true;
+          item.append(checkbox);
+          appendInlineMarkdown(item, task[2]);
+        } else {
+          appendInlineMarkdown(item, itemMatch[1]);
+        }
+        list.append(item);
+        index += 1;
+      }
+      root.append(list);
+      continue;
+    }
+    const paragraphLines = [line.trim()];
+    index += 1;
+    while (index < lines.length && !markdownBlockStart(lines, index)) {
+      paragraphLines.push(lines[index].trim());
+      index += 1;
+    }
+    const paragraph = document.createElement("p");
+    appendInlineMarkdown(paragraph, paragraphLines.join(" "));
+    root.append(paragraph);
+  }
+  return root;
 }
 
 function renderArtifacts(run) {
@@ -360,18 +1021,302 @@ function renderArtifacts(run) {
     const button = node("button", `artifact-button${selected?.path === item.path ? " active" : ""}`);
     button.type = "button";
     button.append(node("strong", "", item.path), node("small", "", `${item.kind} · ${formatBytes(item.bytes)}${item.stage ? ` · ${item.stage}` : ""}`));
-    button.addEventListener("click", () => { state.selectedPath = item.path; renderDetail(); });
+    button.addEventListener("click", () => {
+      state.selectedPath = item.path;
+      state.artifactMode = item.path.toLowerCase().endsWith(".md") ? "rendered" : "raw";
+      renderDetail();
+    });
     list.append(button);
   }
   if (selected) {
     const header = node("header");
-    header.append(node("span", "", selected.path), node("span", "", `${selected.kind} · ${formatBytes(selected.bytes)}`));
-    viewer.append(header, node("pre", "", selected.content));
+    header.append(node("span", "", selected.path));
+    const actions = node("div", "artifact-view-actions");
+    actions.append(node("span", "", `${selected.kind} · ${formatBytes(selected.bytes)}`));
+    const markdown = selected.path.toLowerCase().endsWith(".md");
+    if (markdown) {
+      const rendered = node("button", `artifact-mode${state.artifactMode === "rendered" ? " active" : ""}`, "渲染");
+      const raw = node("button", `artifact-mode${state.artifactMode === "raw" ? " active" : ""}`, "原文");
+      rendered.type = "button";
+      raw.type = "button";
+      rendered.addEventListener("click", () => { state.artifactMode = "rendered"; renderDetail(); });
+      raw.addEventListener("click", () => { state.artifactMode = "raw"; renderDetail(); });
+      actions.append(rendered, raw);
+    }
+    header.append(actions);
+    viewer.append(header);
+    if (markdown && state.artifactMode === "rendered") {
+      viewer.append(renderMarkdown(selected.content));
+    } else {
+      viewer.append(node("pre", "artifact-source", selected.content));
+    }
   } else {
     viewer.append(node("div", "error", "该 Flow 没有可读取的文本产物。"));
   }
   grid.append(list, viewer);
   return grid;
+}
+
+async function openReport(report) {
+  await selectRun(report.run_id);
+  state.selectedPath = report.path;
+  state.artifactMode = "rendered";
+  renderDetail();
+  document.querySelector("#flow-artifacts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderService(service, projectId) {
+  const card = node("article", "service-card card");
+  const header = node(
+    state.projectOnly ? "div" : "button",
+    `service-header${state.projectOnly ? "" : " tree-collapse-trigger"}`,
+  );
+  if (!state.projectOnly) header.type = "button";
+  const indicator = node(
+    "span",
+    state.projectOnly ? "tree-leaf-marker" : "tree-chevron",
+    state.projectOnly ? "•" : "▾",
+  );
+  const title = node("div");
+  const name = node("h4");
+  name.append(indicator, node("span", "", service.name));
+  title.append(name, node("p", "service-path", service.relative_path || service.repo_path));
+  header.append(
+    title,
+    node(
+      "span",
+      "service-flow-count",
+      state.projectOnly ? "微服务仓库" : `${service.flow_count} Flow · ${service.report_count} 报告`,
+    ),
+  );
+  card.append(header);
+  const content = node("div", "service-content");
+
+  if (!state.projectOnly) {
+    const campaigns = state.campaigns.filter(campaign => campaign.service?.id === service.id);
+    if (campaigns.length) {
+      const campaignList = node("div", "service-campaign-list");
+      campaignList.append(node("h5", "", "整合总 Flow"));
+      for (const campaign of campaigns) {
+        const button = node("button", "service-campaign-open");
+        button.type = "button";
+        const identity = node("span", "service-flow-identity");
+        identity.append(node("strong", "", campaign.campaign_id), node("small", "", `${campaign.phases.map(phaseName).join(" → ")} · ${campaign.flow_count} 个 CAO Flow`));
+        button.append(
+          node("span", "campaign-badge", "总 FLOW"),
+          identity,
+          node("span", `status status-${campaign.status}`, campaign.status),
+          node("span", "service-flow-progress", `${campaign.stages_done}/${campaign.stages_total} stages`),
+        );
+        button.addEventListener("click", () => selectCampaign(campaign.instance_id));
+        campaignList.append(button);
+      }
+      content.append(campaignList);
+    }
+
+    if (service.flows?.length) {
+      const flowList = node("div", "service-flow-list");
+      for (const run of service.flows) {
+        const row = node("div", "service-flow-row");
+        const button = node("button", "service-flow-open");
+        button.type = "button";
+        const identity = node("span", "service-flow-identity");
+        identity.append(node("strong", "", run.workflow), node("small", "", run.run_id));
+        button.append(
+          identity,
+          node("span", `status status-${run.status}`, run.status),
+          node("span", "service-flow-progress", `${run.stages_done}/${run.stages_total} stages`),
+          node("time", "", formatTime(run.finished_at || run.created_at)),
+        );
+        button.addEventListener("click", () => selectRun(run.run_id));
+        const remove = node("button", "flow-delete", "删除");
+        remove.type = "button";
+        remove.disabled = !deletableRun(run);
+        remove.title = remove.disabled ? "运行中的 Flow 不能删除" : "删除该 Flow 记录";
+        remove.addEventListener("click", () => deleteRun(run));
+        row.append(button, remove);
+        flowList.append(row);
+      }
+      content.append(flowList);
+    } else {
+      content.append(node("p", "service-empty", "该微服务还没有 Hutch 测试 Flow。"));
+    }
+
+    if (service.reports?.length) {
+      const reports = node("div", "service-reports");
+      reports.append(node("h5", "", "产出报告"));
+      for (const report of service.reports) {
+        const button = node("button", "report-row");
+        button.type = "button";
+        button.append(
+          node("span", "report-name", report.path),
+          node("span", "report-meta", `${report.workflow} · ${formatBytes(report.bytes)} · ${formatTime(report.finished_at)}`),
+        );
+        button.addEventListener("click", () => openReport(report));
+        reports.append(button);
+      }
+      content.append(reports);
+    }
+  }
+  if (!state.projectOnly) {
+    bindCollapsible(header, content, treeNodeKey(projectId, service.id));
+    card.append(content);
+  }
+  return card;
+}
+
+function renderProjectTree(items, container, projectId, depth = 0) {
+  for (const item of items) {
+    if (item.type === "service") {
+      const leaf = node("div", "project-tree-leaf");
+      leaf.style.setProperty("--tree-depth", depth);
+      leaf.append(renderService(item, projectId));
+      container.append(leaf);
+      continue;
+    }
+    const branch = node("section", "project-tree-branch");
+    branch.style.setProperty("--tree-depth", depth);
+    const header = node("button", "project-tree-branch-header tree-collapse-trigger");
+    header.type = "button";
+    const indicator = node("span", "tree-chevron", "▾");
+    const identity = node("div");
+    const name = node("h3");
+    name.append(indicator, node("span", "", item.name));
+    identity.append(name, node("code", "", item.relative_path));
+    header.append(
+      identity,
+      node(
+        "span",
+        "tree-rollup",
+        state.projectOnly
+          ? `${item.service_count} 服务`
+          : `${item.service_count} 服务 · ${item.flow_count} Flow · ${item.report_count} 报告`,
+      ),
+    );
+    branch.append(header);
+    const children = node("div", "project-tree-children");
+    renderProjectTree(item.children || [], children, projectId, depth + 1);
+    bindCollapsible(header, children, treeNodeKey(projectId, item.id));
+    branch.append(children);
+    container.append(branch);
+  }
+}
+
+function renderProjectDetail(project) {
+  const detail = document.querySelector("#detail");
+  detail.replaceChildren();
+  const header = node("header", "detail-header project-detail-header");
+  const title = node("div");
+  title.append(
+    node("p", "eyebrow", "Application Project"),
+    node("h2", "", project.name),
+    node("p", "detail-subtitle", project.root_path || project.repo_path),
+  );
+  header.append(title, node("span", `project-availability ${project.available === false ? "missing" : ""}`, project.available === false ? "目录不可用" : "项目总览"));
+  detail.append(header);
+
+  const stats = node("div", "stats project-stats");
+  stats.append(
+    stat("目录节点", project.directory_count),
+    stat("微服务仓库", project.service_count),
+  );
+  if (!state.projectOnly) {
+    stats.append(stat("测试 Flow", project.flow_count), stat("产出报告", project.report_count));
+  }
+  detail.append(stats);
+
+  if (!project.configured) {
+    detail.append(node("div", "project-notice", "该项目来自历史单仓库 Flow。配置 hutch-projects.json 后可归入应用、域和微服务层级。"));
+  }
+  if (!project.tree?.children?.length) {
+    detail.append(node("div", "empty-state", "项目目录树中尚未发现 Git 微服务仓库。"));
+    return;
+  }
+  const section = node("section", "section project-tree-section");
+  section.append(sectionTitle(
+    "项目目录树",
+    state.projectOnly
+      ? "仅项目模式；点击任意目录节点收起或展开"
+      : "自适应目录层级；Git 仓库是微服务叶子节点",
+  ));
+  const tree = node("div", "project-tree");
+  renderProjectTree(project.tree.children, tree, project.id);
+  section.append(tree);
+  detail.append(section);
+}
+
+function renderCampaignDetail() {
+  const campaign = state.selectedCampaign;
+  const detail = document.querySelector("#detail");
+  detail.replaceChildren();
+
+  const header = node("header", "detail-header campaign-detail-header");
+  const title = node("div");
+  title.append(
+    node("p", "eyebrow", `${campaign.project?.name || "Unknown project"} / ${campaign.service?.name || "service"} / Campaign`),
+    node("h2", "", campaign.campaign_id),
+    node("p", "detail-subtitle", `${campaign.instance_id} · ${campaign.target || "未记录目录"}`),
+  );
+  header.append(title, node("span", `status status-${campaign.status}`, campaign.status));
+  detail.append(header);
+
+  const stats = node("div", "stats");
+  stats.append(
+    stat("CAO 子 Flow", campaign.flow_count),
+    stat("整体 Stage", `${campaign.stages_done}/${campaign.stages_total}`),
+    stat("Agent 节点", campaign.agent_count),
+    stat("总运行时长", formatDuration(campaign.duration_seconds)),
+  );
+  detail.append(stats);
+  if (campaign.summary) detail.append(node("div", "summary card", campaign.summary));
+
+  const graphSection = node("section", "section");
+  graphSection.append(
+    sectionTitle("整体流程", "CAO 子 Flow 级视图；点击节点进入子 Flow，点击边查看 handoff"),
+    renderCampaignGraph(campaign),
+  );
+  detail.append(graphSection);
+
+  const flowsSection = node("section", "section");
+  flowsSection.append(sectionTitle("CAO 子 Flow", "各子 Flow 保持独立，可继续查看 Agent、session 和产物"));
+  const flowList = node("div", "campaign-flow-list");
+  for (const flow of campaign.flows) {
+    const card = node("article", "campaign-flow-card card");
+    const identity = node("div", "campaign-flow-identity");
+    identity.append(
+      node("span", "campaign-phase", phaseName(flow.phase)),
+      node("h4", "", flow.workflow),
+      node("code", "", flow.run_id),
+    );
+    const open = node("button", "campaign-open-flow", "查看子 Flow");
+    open.type = "button";
+    open.addEventListener("click", () => selectRun(flow.run_id));
+    card.append(identity, node("span", `status status-${flow.status}`, flow.status), node("span", "campaign-flow-progress", `${flow.stage_count} stages · ${flow.deliverables.length} 产物`), open);
+    flowList.append(card);
+  }
+  flowsSection.append(flowList);
+  detail.append(flowsSection);
+
+  const artifactsSection = node("section", "section");
+  artifactsSection.append(sectionTitle("全流程产物", `${campaign.deliverables.length} 个持久化交付物，按子 Flow 分组`));
+  const groups = node("div", "campaign-artifact-groups");
+  for (const flow of campaign.flows) {
+    const group = node("article", "campaign-artifact-group card");
+    group.append(node("h4", "", `${phaseName(flow.phase)} · ${flow.workflow}`));
+    const files = node("div", "campaign-artifact-list");
+    for (const artifact of flow.deliverables) {
+      const button = node("button", "campaign-artifact-open");
+      button.type = "button";
+      button.append(node("strong", "", artifact.path), node("small", "", `${artifact.kind} · ${formatBytes(artifact.bytes)}`));
+      button.addEventListener("click", () => openCampaignArtifact(flow, artifact.path));
+      files.append(button);
+    }
+    if (!flow.deliverables.length) files.append(node("span", "service-empty", "该子 Flow 没有文本产物。"));
+    group.append(files);
+    groups.append(group);
+  }
+  artifactsSection.append(groups);
+  detail.append(artifactsSection);
 }
 
 function renderDetail() {
@@ -381,8 +1326,20 @@ function renderDetail() {
 
   const header = node("header", "detail-header");
   const title = node("div");
-  title.append(node("p", "eyebrow", "Completed flow instance"), node("h2", "", run.workflow), node("p", "detail-subtitle", run.run_id));
-  header.append(title, node("span", "status", run.status));
+  title.append(
+    node("p", "eyebrow", `${run.project?.name || "Unknown project"} / ${(run.service?.tree_path || []).join(" / ") || "root"} / ${run.service?.name || "service"}`),
+    node("h2", "", run.workflow),
+    node("p", "detail-subtitle", `${run.run_id} · ${run.service?.repo_path || run.target || "未记录目录"}`),
+  );
+  const actions = node("div", "detail-actions");
+  actions.append(node("span", `status status-${run.status}`, run.status));
+  const remove = node("button", "flow-delete", "删除记录");
+  remove.type = "button";
+  remove.disabled = !deletableRun(run);
+  remove.title = remove.disabled ? "运行中的 Flow 不能删除" : "删除该 Flow 记录";
+  remove.addEventListener("click", () => deleteRun(run));
+  actions.append(remove);
+  header.append(title, actions);
   detail.append(header);
 
   const stats = node("div", "stats");
@@ -393,6 +1350,21 @@ function renderDetail() {
     stat("源码版本", run.target_head ? run.target_head.slice(0, 12) : "—"),
   );
   detail.append(stats);
+
+  if (run.campaign?.id) {
+    const lineage = [
+      `Campaign: ${run.campaign.id}`,
+      `阶段: ${run.campaign.phase || "unknown"}`,
+      run.campaign.intelligence_run_id ? `情报 Run: ${run.campaign.intelligence_run_id}` : null,
+      run.campaign.planning_run_id ? `计划 Run: ${run.campaign.planning_run_id}` : null,
+      run.campaign.parent_run_id ? `父 Run: ${run.campaign.parent_run_id}` : null,
+    ].filter(Boolean).join(" · ");
+    detail.append(node("div", "project-notice", lineage));
+  }
+
+  if (run.status === "orphaned") {
+    detail.append(node("div", "orphaned-notice", `Hutch 原始状态为 ${run.raw_status}，但 CAO 中已不存在 session ${run.cao_session || "（未记录）"}。该记录可安全删除。`));
+  }
 
   const overview = node("section", "section");
   overview.append(sectionTitle("Flow 信息", run.cao_session || "旧版独立 session flow"));
@@ -420,5 +1392,197 @@ function renderDetail() {
   detail.append(artifacts);
 }
 
+async function refreshTerminal() {
+  if (!state.terminalId) return;
+  const terminalId = state.terminalId;
+  const screen = document.querySelector("#terminal-screen");
+  const readonly = document.querySelector("#terminal-readonly");
+  const form = document.querySelector("#terminal-form");
+  const keys = document.querySelector("#terminal-keys");
+  try {
+    const value = await fetchJSON(`/api/terminals/${encodeURIComponent(terminalId)}`);
+    if (terminalId !== state.terminalId) return;
+    const closeToBottom = screen.scrollHeight - screen.scrollTop - screen.clientHeight < 80;
+    screen.textContent = stripAnsi(value.output) || "终端暂无输出。";
+    if (closeToBottom) screen.scrollTop = screen.scrollHeight;
+    document.querySelector("#terminal-meta").textContent = [
+      value.session,
+      value.window,
+      value.status,
+      value.working_directory,
+    ].filter(Boolean).join(" · ");
+    readonly.hidden = value.live;
+    form.hidden = !value.live;
+    keys.hidden = !value.live;
+    if (!value.live && state.terminalTimer) {
+      clearInterval(state.terminalTimer);
+      state.terminalTimer = null;
+    }
+  } catch (error) {
+    screen.textContent = `读取 terminal 失败：${error.message}`;
+  }
+}
+
+async function openTerminal(assignment, agent) {
+  const dialog = document.querySelector("#terminal-dialog");
+  if (state.terminalTimer) clearInterval(state.terminalTimer);
+  state.terminalId = assignment.terminal_id;
+  document.querySelector("#terminal-title").textContent = agent?.profile || assignment.window || "Agent Terminal";
+  document.querySelector("#terminal-meta").textContent = [assignment.session, assignment.window, assignment.terminal_id].filter(Boolean).join(" · ");
+  document.querySelector("#terminal-screen").textContent = "正在连接 tmux pane…";
+  document.querySelector("#terminal-input").value = "";
+  if (!dialog.open) dialog.showModal();
+  await refreshTerminal();
+  if (!document.querySelector("#terminal-form").hidden) {
+    state.terminalTimer = setInterval(refreshTerminal, 1000);
+  }
+}
+
+async function openLauncher() {
+  const dialog = document.querySelector("#launcher-dialog");
+  if (!dialog.open) dialog.showModal();
+  const examples = document.querySelector("#launcher-examples");
+  examples.replaceChildren(node("span", "graph-muted", "正在读取 CAO flow 与 agent profile…"));
+  try {
+    state.caoCatalog = await fetchJSON("/api/cao/catalog");
+    const flows = Array.isArray(state.caoCatalog.flows) ? state.caoCatalog.flows : [];
+    const profiles = Array.isArray(state.caoCatalog.profiles) ? state.caoCatalog.profiles : [];
+    const commands = [
+      ...flows.slice(0, 6).map(item => `cao flow run ${item.name || item}`),
+      ...profiles.slice(0, 4).map(item => `cao launch ${item.name || item.id || item} --provider opencode_cli`),
+    ];
+    examples.replaceChildren();
+    for (const command of commands) {
+      const button = node("button", "launcher-example", command);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        document.querySelector("#launcher-input").value = command;
+        document.querySelector("#launcher-input").focus();
+      });
+      examples.append(button);
+    }
+    if (!commands.length) examples.append(node("span", "graph-muted", "CAO 当前没有可用 flow/profile。"));
+  } catch (error) {
+    examples.replaceChildren(node("span", "error", `读取 CAO catalog 失败：${error.message}`));
+  }
+  document.querySelector("#launcher-input").focus();
+}
+
+document.querySelector("#terminal-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const input = document.querySelector("#terminal-input");
+  const message = input.value;
+  if (!message || !state.terminalId) return;
+  input.disabled = true;
+  try {
+    await postJSON(`/api/terminals/${encodeURIComponent(state.terminalId)}/input`, { message });
+    input.value = "";
+    setTimeout(refreshTerminal, 300);
+  } catch (error) {
+    document.querySelector("#terminal-screen").textContent += `\n\n[Hutch] 发送失败：${error.message}`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+});
+
+document.querySelector("#terminal-input").addEventListener("keydown", event => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    document.querySelector("#terminal-form").requestSubmit();
+  }
+});
+
+document.querySelector("#terminal-keys").addEventListener("click", async event => {
+  const key = event.target.closest("button")?.dataset.key;
+  if (!key || !state.terminalId) return;
+  try {
+    await postJSON(`/api/terminals/${encodeURIComponent(state.terminalId)}/key`, { key });
+    setTimeout(refreshTerminal, 200);
+  } catch (error) {
+    document.querySelector("#terminal-screen").textContent += `\n\n[Hutch] 按键失败：${error.message}`;
+  }
+});
+
+document.querySelector("#launcher-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const input = document.querySelector("#launcher-input");
+  const output = document.querySelector("#launcher-output");
+  const command = input.value.trim();
+  if (!command) return;
+  output.textContent = `$ ${command}\n执行中…`;
+  input.disabled = true;
+  try {
+    const result = await postJSON("/api/cao/execute", { command });
+    output.textContent = `$ ${command}\n${JSON.stringify(result, null, 2)}`;
+    setTimeout(loadRuns, 1200);
+  } catch (error) {
+    output.textContent = `$ ${command}\nERROR: ${error.message}`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+});
+
+document.querySelector("#delete-cancel").addEventListener("click", () => {
+  document.querySelector("#delete-dialog").close();
+});
+
+document.querySelector("#delete-confirm").addEventListener("click", async () => {
+  const run = state.pendingDeleteRun;
+  if (!run) return;
+  const confirm = document.querySelector("#delete-confirm");
+  const cancel = document.querySelector("#delete-cancel");
+  const errorBox = document.querySelector("#delete-error");
+  confirm.disabled = true;
+  cancel.disabled = true;
+  confirm.textContent = "删除中…";
+  errorBox.hidden = true;
+  try {
+    await deleteJSON(`/api/runs/${encodeURIComponent(run.run_id)}`);
+    if (state.selectedRun?.run_id === run.run_id) state.selectedRun = null;
+    state.pendingDeleteRun = null;
+    document.querySelector("#delete-dialog").close();
+    await loadRuns();
+  } catch (error) {
+    errorBox.textContent = `删除失败：${error.message}`;
+    errorBox.hidden = false;
+    confirm.disabled = false;
+    cancel.disabled = false;
+    confirm.textContent = "重试删除";
+  }
+});
+
+document.querySelector("#delete-dialog").addEventListener("close", () => {
+  state.pendingDeleteRun = null;
+  document.querySelector("#delete-cancel").disabled = false;
+});
+
+document.querySelector("#cao-launcher").addEventListener("click", openLauncher);
+document.querySelector("#project-only").addEventListener("click", () => {
+  state.projectOnly = !state.projectOnly;
+  persistViewPreferences();
+  updateProjectOnlyControl();
+  const serviceCount = state.projects.reduce((total, project) => total + (project.service_count || 0), 0);
+  document.querySelector("#run-count").textContent = state.projectOnly
+    ? `${state.projects.length} 项目 · ${serviceCount} 微服务`
+    : `${state.projects.length} 项目 · ${state.campaigns.length} 总 Flow · ${state.runs.length} 子 Flow`;
+  if (state.projectOnly && state.selectedProject) {
+    selectProject(state.selectedProject.id);
+    return;
+  }
+  renderRunList();
+  if (state.view === "projects" && state.selectedProject) renderProjectDetail(state.selectedProject);
+});
+for (const button of document.querySelectorAll("[data-close]")) {
+  button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close());
+}
+document.querySelector("#terminal-dialog").addEventListener("close", () => {
+  if (state.terminalTimer) clearInterval(state.terminalTimer);
+  state.terminalTimer = null;
+  state.terminalId = null;
+});
+
 document.querySelector("#refresh").addEventListener("click", loadRuns);
+updateProjectOnlyControl();
 loadRuns();

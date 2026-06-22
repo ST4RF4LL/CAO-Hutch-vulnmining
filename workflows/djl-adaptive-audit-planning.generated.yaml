@@ -1,0 +1,126 @@
+{
+  "schema": "hutch.cao-workflow.v1",
+  "name": "djl-adaptive-audit-planning",
+  "version": "1.0.0",
+  "description": "Plans bounded audit shards from validated repository intelligence.",
+  "schedule": "0 0 1 1 *",
+  "provider": "opencode_cli",
+  "target": "/Users/wh4lter/Workspace/pentest_gym/djl_test/djl",
+  "cao_repo": "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator",
+  "skill_roots": [
+    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
+  ],
+  "snapshot": {
+    "max_file_bytes": 2097152
+  },
+  "execution": {
+    "stage_timeout_seconds": 1800,
+    "max_attempts": 2,
+    "max_concurrency": 1,
+    "register_enabled": false
+  },
+  "campaign": {
+    "schema": "hutch.campaign.v1",
+    "id": "djl-adaptive-audit",
+    "phase": "planning",
+    "parent_run_id": "djl-recon-threat-intelligence-20260621-220101-231573",
+    "intelligence_run_id": "djl-recon-threat-intelligence-20260621-220101-231573"
+  },
+  "seed_artifacts": [
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/architecture.json",
+      "destination": "shared/intelligence/architecture.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/architecture.md",
+      "destination": "shared/intelligence/architecture.md"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/attack-surface.json",
+      "destination": "shared/intelligence/attack-surface.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/business-flows.json",
+      "destination": "shared/intelligence/business-flows.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/external-interfaces.json",
+      "destination": "shared/intelligence/external-interfaces.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/threat-model.json",
+      "destination": "shared/intelligence/threat-model.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/threat-model.md",
+      "destination": "shared/intelligence/threat-model.md"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-recon-threat-intelligence-20260621-220101-231573/artifacts/intelligence/trust-boundaries.json",
+      "destination": "shared/intelligence/trust-boundaries.json"
+    }
+  ],
+  "agents": [
+    {
+      "id": "audit-planner",
+      "description": "Designs a complete bounded audit plan from repository intelligence.",
+      "mission": "Read every intelligence artifact and the deterministic module inventory. Choose whole_repo, sharded, or hybrid execution; bind every module to at least one task; group work by coherent attack surface and workload; request only declared skills. Never emit shell commands or runtime profiles.",
+      "atlas": false,
+      "skills": []
+    }
+  ],
+  "stages": [
+    {
+      "id": "audit-planning",
+      "task_id": "P-0001",
+      "agent": "audit-planner",
+      "depends_on": [],
+      "artifact": "artifacts/audit-plan.md",
+      "required_artifacts": [
+        "artifacts/audit-plan.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/intelligence"
+      ],
+      "required_sections": [
+        "Planning Basis",
+        "Strategy and Concurrency",
+        "Shard Assignments",
+        "Module Coverage Matrix",
+        "Risks and Limitations"
+      ],
+      "objective": "Produce a machine-valid audit plan whose task module union covers the complete deterministic inventory.",
+      "json_contracts": [
+        {
+          "artifact": "artifacts/audit-plan.json",
+          "schema": "hutch.audit-plan.v1"
+        }
+      ],
+      "audit_plan_contract": {
+        "inventory": "shared/modules.json",
+        "artifact": "artifacts/audit-plan.json",
+        "allowed_skills": [
+          "audit-artifact-management",
+          "audit-casebase-maintenance",
+          "audit-skill-optimization",
+          "c-cpp-file-privilege-review",
+          "c-cpp-memory-safety-review",
+          "c-cpp-native-boundary-review",
+          "java-deserialization-review",
+          "java-injection-review",
+          "java-web-security-review",
+          "joern-rule-maintenance",
+          "python-dependency-config-review",
+          "python-deserialization-review",
+          "python-execution-review",
+          "python-web-framework-review",
+          "secure-code-review-common",
+          "security-recon",
+          "vulnerability-validation"
+        ]
+      }
+    }
+  ]
+}

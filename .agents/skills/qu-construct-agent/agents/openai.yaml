@@ -1,0 +1,4 @@
+interface:
+  display_name: "QU Construct Agent"
+  short_description: "Adapt external agents and skills into CAO profiles"
+  default_prompt: "Use $qu-construct-agent to inspect this external agent repository and construct least-privilege CAO profiles."

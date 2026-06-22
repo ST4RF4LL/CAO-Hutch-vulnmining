@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hutch Flow Archive</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>Hutch Flow Control</title>
+    <link rel="stylesheet" href="/styles.css?v=20260622-project-tree" />
   </head>
   <body>
     <main class="shell">
@@ -12,28 +12,91 @@
         <header class="brand">
           <div class="brand-mark">H</div>
           <div>
-            <h1>Hutch Archive</h1>
-            <p>已完成 Flow 实例</p>
+            <h1>Hutch Control</h1>
+            <p>项目树、微服务与 Flow</p>
           </div>
         </header>
         <div class="sidebar-tools">
           <span id="run-count">加载中</span>
-          <button id="refresh" type="button">刷新</button>
+          <div class="sidebar-actions">
+            <button id="project-only" type="button" aria-pressed="false" title="隐藏所有 Flow，只显示项目目录与微服务">仅项目</button>
+            <button id="cao-launcher" type="button">CAO 执行</button>
+            <button id="refresh" type="button">刷新</button>
+          </div>
         </div>
-        <nav id="run-list" class="run-list" aria-label="Flow instances"></nav>
+        <nav id="run-list" class="run-list" aria-label="项目目录树、微服务与 Flow"></nav>
         <footer>
-          数据来自 Hutch run 证据目录。CAO 只负责实时执行。
+          自适应遍历项目目录；Git 仓库作为微服务叶子节点。
         </footer>
       </aside>
 
       <section id="detail" class="detail">
         <div class="empty-state">
           <div class="empty-icon">↖</div>
-          <h2>选择一个 Flow 实例</h2>
-          <p>查看执行摘要、Agent session、terminal 以及文本交付物。</p>
+          <h2>选择项目或 Flow</h2>
+          <p>查看项目目录树、微服务测试 Flow、Agent session 和产出报告。</p>
         </div>
       </section>
     </main>
-    <script src="/app.js" defer></script>
+
+    <dialog id="terminal-dialog" class="console-dialog">
+      <header class="console-header">
+        <div>
+          <p class="eyebrow">tmux terminal</p>
+          <h2 id="terminal-title">Agent Terminal</h2>
+          <p id="terminal-meta" class="console-meta"></p>
+        </div>
+        <button class="dialog-close" data-close="terminal-dialog" type="button">关闭</button>
+      </header>
+      <pre id="terminal-screen" class="terminal-screen" tabindex="0">正在连接…</pre>
+      <div id="terminal-readonly" class="console-notice" hidden>该 tmux 窗口已结束，当前显示持久化终端记录。</div>
+      <form id="terminal-form" class="terminal-form">
+        <textarea id="terminal-input" rows="2" placeholder="向当前 Agent TUI 发送一行输入；Enter 发送，Shift+Enter 换行"></textarea>
+        <button type="submit">发送</button>
+      </form>
+      <div id="terminal-keys" class="terminal-keys" aria-label="Terminal keys">
+        <button type="button" data-key="C-c">Ctrl-C</button>
+        <button type="button" data-key="Escape">Esc</button>
+        <button type="button" data-key="Up">↑</button>
+        <button type="button" data-key="Down">↓</button>
+        <button type="button" data-key="Enter">Enter</button>
+      </div>
+    </dialog>
+
+    <dialog id="launcher-dialog" class="console-dialog launcher-dialog">
+      <header class="console-header">
+        <div>
+          <p class="eyebrow">CAO command launcher</p>
+          <h2>CAO 执行</h2>
+          <p class="console-meta">仅支持 flow run 与受约束的 agent launch，不执行任意 shell。</p>
+        </div>
+        <button class="dialog-close" data-close="launcher-dialog" type="button">关闭</button>
+      </header>
+      <div id="launcher-examples" class="launcher-examples"></div>
+      <form id="launcher-form" class="launcher-form">
+        <label for="launcher-input">$</label>
+        <input id="launcher-input" autocomplete="off" spellcheck="false" placeholder="cao flow run djl-vulnerability-mining" />
+        <button type="submit">执行</button>
+      </form>
+      <pre id="launcher-output" class="launcher-output">等待命令。</pre>
+    </dialog>
+
+    <dialog id="delete-dialog" class="delete-dialog">
+      <header>
+        <p class="eyebrow">Delete flow record</p>
+        <h2>删除 Flow 记录</h2>
+      </header>
+      <div class="delete-dialog-body">
+        <p id="delete-message"></p>
+        <code id="delete-run-id"></code>
+        <p class="delete-note">记录将移入 <code>runs/.trash</code>，可以从文件系统恢复。CAO Flow 定义不会被删除。</p>
+        <p id="delete-error" class="delete-error" hidden></p>
+      </div>
+      <footer>
+        <button id="delete-cancel" type="button">取消</button>
+        <button id="delete-confirm" type="button">确认删除</button>
+      </footer>
+    </dialog>
+    <script src="/app.js?v=20260622-project-tree" defer></script>
   </body>
 </html>

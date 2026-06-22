@@ -1,0 +1,134 @@
+import argparse
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import hutch_cli as CLI
+from hutch_mcp_control import HutchMcpControl
+
+
+class FakeClient:
+    def __init__(self):
+        self.base_url = "http://127.0.0.1:9890"
+        self.calls = []
+
+    def get(self, path):
+        self.calls.append(("GET", path, None))
+        if path == "/api/health":
+            return {"status": "ok"}
+        if path == "/api/campaigns":
+            return [{"instance_id": "camp-1", "status": "completed"}]
+        if path == "/api/campaigns/camp-1":
+            return {
+                "instance_id": "camp-1",
+                "deliverables": [
+                    {"path": "artifacts/report.md", "content": "report body"}
+                ],
+            }
+        if path == "/api/runs/run-1":
+            return {
+                "run_id": "run-1",
+                "deliverables": [
+                    {"path": "artifacts/report.md", "content": "report body"}
+                ],
+            }
+        if path == "/api/runs":
+            return [
+                {
+                    "run_id": "run-1",
+                    "status": "running",
+                    "project": {"id": "app"},
+                },
+                {
+                    "run_id": "run-2",
+                    "status": "completed",
+                    "project": {"id": "other"},
+                },
+            ]
+        if path == "/api/cao/catalog":
+            return {
+                "flows": [{"name": "audit"}],
+                "profiles": [{"name": "auditor", "provider": "opencode_cli"}],
+            }
+        return {"id": "value"}
+
+    def post(self, path, body=None):
+        self.calls.append(("POST", path, body))
+        return {"ok": True, "path": path, "body": body}
+
+
+class HutchCliTests(unittest.TestCase):
+    def test_flow_list_filters_project_and_status(self):
+        client = FakeClient()
+        args = argparse.Namespace(project="app", status="running")
+
+        runs = CLI.flow_list(args, client)
+
+        self.assertEqual([run["run_id"] for run in runs], ["run-1"])
+
+    def test_flow_actions_use_structured_hutch_endpoints(self):
+        client = FakeClient()
+        CLI.flow_action(
+            argparse.Namespace(flow_name="audit", flow_action="start"), client
+        )
+        CLI.flow_stop(argparse.Namespace(run_id="run-1"), client)
+
+        self.assertEqual(client.calls[0][:2], ("POST", "/api/flows/audit/start"))
+        self.assertEqual(client.calls[1][:2], ("POST", "/api/runs/run-1/stop"))
+
+    def test_project_open_resolves_path_and_preserves_operator_metadata(self):
+        client = FakeClient()
+        with tempfile.TemporaryDirectory() as temporary:
+            args = argparse.Namespace(
+                path=temporary,
+                name="Example",
+                project_id="example",
+                browser=False,
+            )
+            CLI.project_open(args, client)
+
+        body = client.calls[0][2]
+        self.assertEqual(body["name"], "Example")
+        self.assertEqual(body["id"], "example")
+        self.assertTrue(Path(body["path"]).is_absolute())
+
+    def test_machine_output_is_valid_json(self):
+        value = {"ok": True, "run_id": "run-1"}
+        self.assertEqual(json.loads(json.dumps(value)), value)
+
+    def test_mcp_control_bounds_artifact_context_and_reads_exact_artifact(self):
+        control = HutchMcpControl("http://127.0.0.1:9890")
+        control.client = FakeClient()
+
+        campaign = control.get_campaign("camp-1")
+        run = control.get_flow_run("run-1")
+        artifact = control.get_flow_artifact("run-1", "artifacts/report.md")
+
+        self.assertTrue(campaign["success"])
+        self.assertNotIn("content", campaign["campaign"]["deliverables"][0])
+        self.assertNotIn("content", run["run"]["deliverables"][0])
+        self.assertEqual(artifact["artifact"]["content"], "report body")
+
+    def test_mcp_control_uses_only_structured_mutation_endpoints(self):
+        control = HutchMcpControl("http://127.0.0.1:9890")
+        client = FakeClient()
+        control.client = client
+
+        control.start_flow("audit flow")
+        control.set_flow_schedule("audit flow", False)
+        control.stop_flow_run("run/1")
+
+        self.assertEqual(client.calls[0][:2], ("POST", "/api/flows/audit%20flow/start"))
+        self.assertEqual(client.calls[1][:2], ("POST", "/api/flows/audit%20flow/disable"))
+        self.assertEqual(client.calls[2][:2], ("POST", "/api/runs/run%2F1/stop"))
+
+
+if __name__ == "__main__":
+    unittest.main()

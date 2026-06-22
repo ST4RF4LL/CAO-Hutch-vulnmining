@@ -2,8 +2,11 @@
   "schema": "hutch.workflow.v1",
   "name": "djl-security-review",
   "version": "0.1.0",
-  "provider": "codex",
-  "target": "/Users/wh4lter/Workspace/djl_test/djl",
+  "provider": "opencode_cli",
+  "target": "/Users/wh4lter/Workspace/pentest_gym/djl_test/djl",
+  "skill_roots": [
+    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
+  ],
   "snapshot": {
     "analysis": "full",
     "max_file_bytes": 2097152
@@ -13,8 +16,9 @@
       "id": "architecture",
       "task_id": "T-0001",
       "profile": "djl-architecture-analyst",
-      "provider": "codex",
+      "provider": "opencode_cli",
       "profile_file": "cao-profiles/djl-architecture-analyst.md",
+      "skills": ["secure-code-review-common", "audit-artifact-management"],
       "depends_on": [],
       "artifact": "artifacts/architecture.md",
       "inputs": ["shared/source-fingerprint.json", "shared/atlas-status.txt"],
@@ -34,6 +38,7 @@
       "profile": "djl-threat-modeler",
       "provider": "opencode_cli",
       "profile_file": "cao-profiles/djl-threat-modeler.md",
+      "skills": ["secure-code-review-common", "audit-artifact-management"],
       "depends_on": ["architecture"],
       "artifact": "artifacts/threat-model.md",
       "inputs": ["artifacts/architecture.md", "shared/atlas-status.txt"],
@@ -54,6 +59,13 @@
       "profile": "djl-code-auditor",
       "provider": "opencode_cli",
       "profile_file": "cao-profiles/djl-code-auditor.md",
+      "skills": [
+        "secure-code-review-common",
+        "audit-artifact-management",
+        "java-deserialization-review",
+        "java-injection-review",
+        "java-web-security-review"
+      ],
       "depends_on": ["architecture", "threat-analysis"],
       "artifact": "artifacts/code-audit.md",
       "inputs": ["artifacts/architecture.md", "artifacts/threat-model.md", "shared/atlas-status.txt"],

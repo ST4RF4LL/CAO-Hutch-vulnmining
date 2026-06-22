@@ -1,0 +1,4 @@
+interface:
+  display_name: "QU Orchestrator"
+  short_description: "Create and operate CAO agents and flows through Hutch"
+  default_prompt: "Use $qu-orchestrator to operate Hutch or construct the CAO agents and flows needed for this task."

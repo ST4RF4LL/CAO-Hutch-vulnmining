@@ -1,0 +1,13 @@
+{
+  "schema": "hutch.cao-bundle.v1",
+  "workflow": "djl-recon-threat-intelligence",
+  "source": "/Users/wh4lter/Workspace/Qu-Studio/workflows/djl-recon-threat-intelligence.yaml",
+  "flow": "/Users/wh4lter/Workspace/Qu-Studio/generated/djl-recon-threat-intelligence/djl-recon-threat-intelligence.flow.md",
+  "supervisor_profile": "djl-recon-threat-intelligence-supervisor",
+  "profiles": [
+    "/Users/wh4lter/Workspace/Qu-Studio/generated/djl-recon-threat-intelligence/profiles/djl-recon-threat-intelligence-supervisor.md",
+    "/Users/wh4lter/Workspace/Qu-Studio/generated/djl-recon-threat-intelligence/profiles/djl-recon-threat-intelligence-repository-analyst.md",
+    "/Users/wh4lter/Workspace/Qu-Studio/generated/djl-recon-threat-intelligence/profiles/djl-recon-threat-intelligence-threat-modeler.md"
+  ],
+  "register_enabled": false
+}

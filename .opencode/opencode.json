@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "QU",
+  "mcp": {
+    "hutch": {
+      "type": "local",
+      "command": [
+        "/Users/wh4lter/Workspace/Qu-Studio/bin/hutch-mcp"
+      ],
+      "enabled": true,
+      "environment": {
+        "HUTCH_URL": "http://127.0.0.1:9890",
+        "CAO_REPO": "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator"
+      }
+    }
+  },
+  "permission": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "edit": "allow",
+    "external_directory": "allow",
+    "webfetch": "ask",
+    "websearch": "ask",
+    "task": "deny",
+    "skill": {
+      "*": "deny",
+      "qu-construct-agent": "allow"
+    },
+    "bash": {
+      "*": "ask",
+      "./bin/hutch *": "allow",
+      "python3 -m unittest discover -s tests -v": "allow",
+      "python3 -m py_compile *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "rg *": "allow"
+    }
+  }
+}

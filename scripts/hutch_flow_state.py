@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import json
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
+from adaptive_audit import AdaptiveAuditError, build_coverage_summary
 from run_cao_flow import append_event, atomic_json, now, source_fingerprint, validate_result
 
 
@@ -124,11 +127,127 @@ def await_stage(run_dir: Path, stage_id: str, timeout: int, interval: float) -> 
     raise StateError(f"timed out after {timeout}s waiting for {result_path.name}")
 
 
+def coverage_gate(run_dir: Path, stage_id: str) -> dict[str, Any]:
+    workflow, state = load_run(run_dir)
+    stage = stage_by_id(workflow, stage_id)
+    if not stage.get("coverage_gate"):
+        raise StateError(f"stage {stage_id} is not a coverage gate")
+    for dependency in stage.get("depends_on", []):
+        if state["stages"][dependency]["status"] != "done":
+            raise StateError(f"dependency {dependency} is not validated")
+    try:
+        summary = build_coverage_summary(workflow, run_dir, stage)
+    except AdaptiveAuditError as error:
+        state["stages"][stage_id].update(
+            {"status": "blocked-coverage", "last_error": str(error)}
+        )
+        atomic_json(run_dir / "state.json", state)
+        append_event(run_dir, "coverage_gate_failed", stage=stage_id, reason=str(error))
+        raise StateError(str(error)) from error
+    append_event(
+        run_dir,
+        "coverage_gate_passed",
+        stage=stage_id,
+        module_count=summary["module_count"],
+        deferred_count=summary["deferred_count"],
+    )
+    return {"ok": True, "stage": stage_id, "summary": summary}
+
+
+def reconcile_report(run_dir: Path, stage_id: str) -> dict[str, Any]:
+    """Reconcile aggregate metrics from machine results without changing findings."""
+    workflow, _ = load_run(run_dir)
+    stage = stage_by_id(workflow, stage_id)
+    contract = stage.get("report_consistency")
+    if not contract:
+        raise StateError(f"stage {stage_id} has no report consistency contract")
+    validation = json.loads(
+        (run_dir / contract["validation_result"]).read_text(encoding="utf-8")
+    )
+    result_path = run_dir / "outbox" / f"{stage['task_id']}.result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    findings = validation.get("findings", [])
+    result["findings"] = findings
+    statuses = collections.Counter(finding.get("status") for finding in findings)
+    severities = collections.Counter(
+        str(finding.get("severity", "")).lower() for finding in findings
+    )
+    raw_count = 0
+    for relative in contract.get("audit_results", []):
+        audit_result = json.loads((run_dir / relative).read_text(encoding="utf-8"))
+        raw_count += len(audit_result.get("findings", []))
+    artifact_path = run_dir / stage["artifact"]
+    text = artifact_path.read_text(encoding="utf-8")
+    counts = {
+        "Raw candidate findings": raw_count,
+        "Validated findings after deduplication": len(findings),
+        "Validated findings (post-deduplication)": len(findings),
+        "Confirmed": statuses["confirmed"],
+        "Findings confirmed": statuses["confirmed"],
+        "Likely": statuses["likely"],
+        "Findings likely": statuses["likely"],
+        "Needs-info": statuses["needs-info"],
+        "Findings needs-info": statuses["needs-info"],
+        "Critical": severities["critical"],
+        "Critical severity findings": severities["critical"],
+        "High": severities["high"],
+        "High severity findings": severities["high"],
+        "Medium": severities["medium"],
+        "Medium severity findings": severities["medium"],
+        "Low": severities["low"],
+        "Low severity findings": severities["low"],
+    }
+    lines = []
+    replacements = 0
+    for line in text.splitlines():
+        match = re.match(r"^(\|\s*)([^|]+?)(\s*\|\s*)(\d+)(\s*\|.*)$", line)
+        if match and match.group(2).strip() in counts:
+            label = match.group(2).strip()
+            value = counts[label]
+            line = f"{match.group(1)}{match.group(2)}{match.group(3)}{value}{match.group(5)}"
+            replacements += 1
+        lines.append(line)
+    text = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    result["summary"] = re.sub(
+        r"\b\d+ medium\b", f"{severities['medium']} medium", result.get("summary", "")
+    )
+    result["summary"] = re.sub(
+        r"\b\d+ low\b", f"{severities['low']} low", result.get("summary", "")
+    )
+    result["hutch_reconciled"] = {
+        "validation_result": contract["validation_result"],
+        "raw_candidates": raw_count,
+        "validated_findings": len(findings),
+        "status_counts": dict(statuses),
+        "severity_counts": dict(severities),
+        "markdown_metric_replacements": replacements,
+    }
+    atomic_json(result_path, result)
+    temporary = artifact_path.with_suffix(artifact_path.suffix + ".tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(artifact_path)
+    append_event(
+        run_dir,
+        "report_metrics_reconciled",
+        stage=stage_id,
+        validated_findings=len(findings),
+        replacements=replacements,
+    )
+    return {"ok": True, **result["hutch_reconciled"]}
+
+
 def finalize(run_dir: Path) -> dict[str, Any]:
     workflow, state = load_run(run_dir)
     incomplete = [stage["id"] for stage in workflow["stages"] if state["stages"][stage["id"]]["status"] != "done"]
     if incomplete:
         raise StateError(f"cannot finalize; stages are not validated: {incomplete}")
+
+    for stage in workflow["stages"]:
+        if stage.get("coverage_gate"):
+            try:
+                build_coverage_summary(workflow, run_dir, stage)
+            except AdaptiveAuditError as error:
+                raise StateError(f"cannot finalize; coverage gate failed: {error}") from error
 
     current = source_fingerprint(Path(workflow["target"]).resolve())
     original = state["target_fingerprint"]
@@ -175,6 +294,12 @@ def main() -> int:
     await_parser.add_argument("stage_id")
     await_parser.add_argument("--timeout", type=int, default=1800)
     await_parser.add_argument("--interval", type=float, default=5.0)
+    coverage_parser = subparsers.add_parser("coverage")
+    coverage_parser.add_argument("run_dir", type=Path)
+    coverage_parser.add_argument("stage_id")
+    reconcile_parser = subparsers.add_parser("reconcile-report")
+    reconcile_parser.add_argument("run_dir", type=Path)
+    reconcile_parser.add_argument("stage_id")
     finalize_parser = subparsers.add_parser("finalize")
     finalize_parser.add_argument("run_dir", type=Path)
     status_parser = subparsers.add_parser("status")
@@ -189,6 +314,10 @@ def main() -> int:
             value = await_stage(
                 args.run_dir.resolve(), args.stage_id, args.timeout, args.interval
             )
+        elif args.command == "coverage":
+            value = coverage_gate(args.run_dir.resolve(), args.stage_id)
+        elif args.command == "reconcile-report":
+            value = reconcile_report(args.run_dir.resolve(), args.stage_id)
         elif args.command == "finalize":
             value = finalize(args.run_dir.resolve())
         else:

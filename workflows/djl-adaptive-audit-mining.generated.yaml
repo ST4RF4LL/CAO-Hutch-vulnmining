@@ -1,0 +1,2289 @@
+{
+  "schema": "hutch.cao-workflow.v1",
+  "name": "djl-adaptive-audit-mining",
+  "version": "1.0.0",
+  "description": "Hutch-compiled adaptive vulnerability-mining workflow.",
+  "schedule": "0 0 1 1 *",
+  "provider": "opencode_cli",
+  "target": "/Users/wh4lter/Workspace/pentest_gym/djl_test/djl",
+  "cao_repo": "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator",
+  "skill_roots": [
+    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
+  ],
+  "snapshot": {
+    "max_file_bytes": 2097152
+  },
+  "execution": {
+    "stage_timeout_seconds": 1800,
+    "max_attempts": 2,
+    "max_concurrency": 8,
+    "register_enabled": false
+  },
+  "campaign": {
+    "schema": "hutch.campaign.v1",
+    "id": "djl-adaptive-audit",
+    "phase": "mining",
+    "intelligence_run_id": "djl-recon-threat-intelligence-20260621-220101-231573",
+    "planning_run_id": "djl-adaptive-audit-planning-20260621-221651-899743"
+  },
+  "audit_plan": {
+    "schema": "hutch.audit-plan.v1",
+    "task_id": "P-0001",
+    "stage": "audit-planning",
+    "strategy": "hybrid",
+    "concurrency": 8,
+    "tasks": [
+      {
+        "id": "T-001-01",
+        "description": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+        "module_ids": [
+          "root",
+          "android-f60ed56a",
+          "api-14c2529e",
+          "basicdataset-3025963e",
+          "bom-23f3770b",
+          "buildsrc-ae2105ec",
+          "djl-zero-be90b75f"
+        ],
+        "paths": [
+          ".",
+          "android",
+          "api",
+          "basicdataset",
+          "bom",
+          "buildSrc",
+          "djl-zero"
+        ],
+        "skills": [
+          "security-recon",
+          "python-dependency-config-review",
+          "audit-artifact-management"
+        ],
+        "priority": "baseline",
+        "parent_task_id": "T-001",
+        "workload": {
+          "module_count": 7,
+          "source_file_count": 718
+        },
+        "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules"
+      },
+      {
+        "id": "T-001-02",
+        "description": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+        "module_ids": [
+          "examples-c590b3c9",
+          "integration-eb92cc52",
+          "jacoco-861e217a",
+          "model-zoo-b9ca42f9",
+          "testing-cf80cd8a",
+          "android-core-36d4dbcc",
+          "android-pytorch-native-dbc2722f",
+          "android-tokenizer-native-e947ec13"
+        ],
+        "paths": [
+          "android/core",
+          "android/pytorch-native",
+          "android/tokenizer-native",
+          "examples",
+          "integration",
+          "jacoco",
+          "model-zoo",
+          "testing"
+        ],
+        "skills": [
+          "security-recon",
+          "python-dependency-config-review",
+          "audit-artifact-management"
+        ],
+        "priority": "baseline",
+        "parent_task_id": "T-001",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 253
+        },
+        "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules"
+      },
+      {
+        "id": "T-001-03",
+        "description": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+        "module_ids": [
+          "extensions-audio-fa8de76f",
+          "extensions-aws-ai-ed155019",
+          "extensions-fasttext-1fbabe19",
+          "extensions-genai-10e8920d",
+          "extensions-hadoop-4e6a9746",
+          "extensions-opencv-e8c074ed",
+          "extensions-sentencepiece-57e722a5",
+          "extensions-spark-70ba9e1f"
+        ],
+        "paths": [
+          "extensions/audio",
+          "extensions/aws-ai",
+          "extensions/fasttext",
+          "extensions/genai",
+          "extensions/hadoop",
+          "extensions/opencv",
+          "extensions/sentencepiece",
+          "extensions/spark"
+        ],
+        "skills": [
+          "security-recon",
+          "python-dependency-config-review",
+          "audit-artifact-management"
+        ],
+        "priority": "baseline",
+        "parent_task_id": "T-001",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 245
+        },
+        "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules"
+      },
+      {
+        "id": "T-001-04",
+        "description": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+        "module_ids": [
+          "extensions-tablesaw-30b1b535",
+          "extensions-timeseries-240bf79e",
+          "extensions-tokenizers-0d622459",
+          "engines-ml-lightgbm-8fb5bacd",
+          "engines-ml-xgboost-dd147db5",
+          "engines-mxnet-jnarator-97a79915",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20"
+        ],
+        "paths": [
+          "engines/ml/lightgbm",
+          "engines/ml/xgboost",
+          "engines/mxnet/jnarator",
+          "engines/mxnet/mxnet-engine",
+          "engines/mxnet/mxnet-model-zoo",
+          "extensions/tablesaw",
+          "extensions/timeseries",
+          "extensions/tokenizers"
+        ],
+        "skills": [
+          "security-recon",
+          "python-dependency-config-review",
+          "audit-artifact-management"
+        ],
+        "priority": "baseline",
+        "parent_task_id": "T-001",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 277
+        },
+        "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules"
+      },
+      {
+        "id": "T-001-05",
+        "description": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+        "module_ids": [
+          "engines-mxnet-native-ebb498ac",
+          "engines-onnxruntime-onnxruntime-android-c7540b4a",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a",
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-pytorch-pytorch-jni-64ae5dd4",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b",
+          "engines-pytorch-pytorch-native-ee60a5e2",
+          "engines-tensorflow-tensorflow-api-4722ddb5"
+        ],
+        "paths": [
+          "engines/mxnet/native",
+          "engines/onnxruntime/onnxruntime-android",
+          "engines/onnxruntime/onnxruntime-engine",
+          "engines/pytorch/pytorch-engine",
+          "engines/pytorch/pytorch-jni",
+          "engines/pytorch/pytorch-model-zoo",
+          "engines/pytorch/pytorch-native",
+          "engines/tensorflow/tensorflow-api"
+        ],
+        "skills": [
+          "security-recon",
+          "python-dependency-config-review",
+          "audit-artifact-management"
+        ],
+        "priority": "baseline",
+        "parent_task_id": "T-001",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 106
+        },
+        "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules"
+      },
+      {
+        "id": "T-001-06",
+        "description": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+        "module_ids": [
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4",
+          "engines-tensorflow-tensorflow-native-cbdd69dc",
+          "extensions-spark-setup-9218a187",
+          "extensions-tokenizers-src-main-python-056cc7cd"
+        ],
+        "paths": [
+          "engines/tensorflow/tensorflow-engine",
+          "engines/tensorflow/tensorflow-model-zoo",
+          "engines/tensorflow/tensorflow-native",
+          "extensions/spark/setup",
+          "extensions/tokenizers/src/main/python"
+        ],
+        "skills": [
+          "security-recon",
+          "python-dependency-config-review",
+          "audit-artifact-management"
+        ],
+        "priority": "baseline",
+        "parent_task_id": "T-001",
+        "workload": {
+          "module_count": 5,
+          "source_file_count": 76
+        },
+        "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules"
+      },
+      {
+        "id": "T-002",
+        "description": "Core API deep audit (P0) — RemoteRepository SSRF, JSON deserialization, FilenameUtils, Model loading, Engine SPI, telemetry",
+        "module_ids": [
+          "api-14c2529e"
+        ],
+        "paths": [
+          "api"
+        ],
+        "skills": [
+          "java-deserialization-review",
+          "java-injection-review",
+          "java-web-security-review",
+          "secure-code-review-common",
+          "vulnerability-validation"
+        ],
+        "priority": "P0",
+        "threats": [
+          "T-2",
+          "T-3",
+          "T-4",
+          "T-5",
+          "T-6"
+        ],
+        "workload": {
+          "module_count": 1,
+          "source_file_count": 590
+        },
+        "threat_ids": [
+          "T-2",
+          "T-3",
+          "T-4",
+          "T-5",
+          "T-6"
+        ],
+        "objective": "Core API deep audit (P0) — RemoteRepository SSRF, JSON deserialization, FilenameUtils, Model loading, Engine SPI, telemetry"
+      },
+      {
+        "id": "T-003",
+        "description": "PyTorch engine & native bridge audit (P0/P1) — PYTORCH_EXTRA_LIBRARY_PATH arbitrary native code execution (T-1), JNI bridge, C/C++ native code",
+        "module_ids": [
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-pytorch-pytorch-jni-64ae5dd4",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b",
+          "engines-pytorch-pytorch-native-ee60a5e2"
+        ],
+        "paths": [
+          "engines/pytorch/pytorch-engine",
+          "engines/pytorch/pytorch-jni",
+          "engines/pytorch/pytorch-model-zoo",
+          "engines/pytorch/pytorch-native"
+        ],
+        "skills": [
+          "c-cpp-memory-safety-review",
+          "c-cpp-native-boundary-review",
+          "c-cpp-file-privilege-review",
+          "secure-code-review-common",
+          "vulnerability-validation"
+        ],
+        "priority": "P0",
+        "threats": [
+          "T-1",
+          "T-5"
+        ],
+        "workload": {
+          "module_count": 4,
+          "source_file_count": 78
+        },
+        "threat_ids": [
+          "T-1",
+          "T-5"
+        ],
+        "objective": "PyTorch engine & native bridge audit (P0/P1) — PYTORCH_EXTRA_LIBRARY_PATH arbitrary native code execution (T-1), JNI bridge, C/C++ native code"
+      },
+      {
+        "id": "T-004",
+        "description": "GenAI extension audit (P1) — baseUrl SSRF (T-7), API key exposure (T-4), external API data flow, response deserialization",
+        "module_ids": [
+          "extensions-genai-10e8920d"
+        ],
+        "paths": [
+          "extensions/genai"
+        ],
+        "skills": [
+          "java-injection-review",
+          "java-web-security-review",
+          "java-deserialization-review",
+          "secure-code-review-common",
+          "vulnerability-validation"
+        ],
+        "priority": "P1",
+        "threats": [
+          "T-4",
+          "T-7"
+        ],
+        "workload": {
+          "module_count": 1,
+          "source_file_count": 141
+        },
+        "threat_ids": [
+          "T-4",
+          "T-7"
+        ],
+        "objective": "GenAI extension audit (P1) — baseUrl SSRF (T-7), API key exposure (T-4), external API data flow, response deserialization"
+      },
+      {
+        "id": "T-005",
+        "description": "Tokenizers extension & Rust JNI audit (P1) — djl_tokenizer native loading, Rust/JNI boundary, Python bindings",
+        "module_ids": [
+          "extensions-tokenizers-0d622459",
+          "extensions-tokenizers-src-main-python-056cc7cd"
+        ],
+        "paths": [
+          "extensions/tokenizers",
+          "extensions/tokenizers/src/main/python"
+        ],
+        "skills": [
+          "c-cpp-memory-safety-review",
+          "c-cpp-native-boundary-review",
+          "python-execution-review",
+          "python-web-framework-review",
+          "secure-code-review-common"
+        ],
+        "priority": "P1",
+        "workload": {
+          "module_count": 2,
+          "source_file_count": 114
+        },
+        "objective": "Tokenizers extension & Rust JNI audit (P1) — djl_tokenizer native loading, Rust/JNI boundary, Python bindings"
+      },
+      {
+        "id": "T-006-01",
+        "description": "MXNet, TensorFlow, ONNX Runtime & ML engines audit (P2) — JNI/JNA bridges, native library loading, model deserialization",
+        "module_ids": [
+          "engines-mxnet-jnarator-97a79915",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20",
+          "engines-mxnet-native-ebb498ac",
+          "engines-tensorflow-tensorflow-api-4722ddb5",
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4",
+          "engines-tensorflow-tensorflow-native-cbdd69dc"
+        ],
+        "paths": [
+          "engines/mxnet/jnarator",
+          "engines/mxnet/mxnet-engine",
+          "engines/mxnet/mxnet-model-zoo",
+          "engines/mxnet/native",
+          "engines/tensorflow/tensorflow-api",
+          "engines/tensorflow/tensorflow-engine",
+          "engines/tensorflow/tensorflow-model-zoo",
+          "engines/tensorflow/tensorflow-native"
+        ],
+        "skills": [
+          "c-cpp-memory-safety-review",
+          "c-cpp-native-boundary-review",
+          "c-cpp-file-privilege-review",
+          "secure-code-review-common"
+        ],
+        "priority": "P2",
+        "threats": [
+          "T-5"
+        ],
+        "parent_task_id": "T-006",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 97
+        },
+        "threat_ids": [
+          "T-5"
+        ],
+        "objective": "MXNet, TensorFlow, ONNX Runtime & ML engines audit (P2) — JNI/JNA bridges, native library loading, model deserialization"
+      },
+      {
+        "id": "T-006-02",
+        "description": "MXNet, TensorFlow, ONNX Runtime & ML engines audit (P2) — JNI/JNA bridges, native library loading, model deserialization",
+        "module_ids": [
+          "engines-onnxruntime-onnxruntime-android-c7540b4a",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a",
+          "engines-ml-lightgbm-8fb5bacd",
+          "engines-ml-xgboost-dd147db5"
+        ],
+        "paths": [
+          "engines/ml/lightgbm",
+          "engines/ml/xgboost",
+          "engines/onnxruntime/onnxruntime-android",
+          "engines/onnxruntime/onnxruntime-engine"
+        ],
+        "skills": [
+          "c-cpp-memory-safety-review",
+          "c-cpp-native-boundary-review",
+          "c-cpp-file-privilege-review",
+          "secure-code-review-common"
+        ],
+        "priority": "P2",
+        "threats": [
+          "T-5"
+        ],
+        "parent_task_id": "T-006",
+        "workload": {
+          "module_count": 4,
+          "source_file_count": 54
+        },
+        "threat_ids": [
+          "T-5"
+        ],
+        "objective": "MXNet, TensorFlow, ONNX Runtime & ML engines audit (P2) — JNI/JNA bridges, native library loading, model deserialization"
+      },
+      {
+        "id": "T-007",
+        "description": "Native JNI extensions audit (P3) — fastText and SentencePiece C++ JNI bridges, native library loading from JAR",
+        "module_ids": [
+          "extensions-fasttext-1fbabe19",
+          "extensions-sentencepiece-57e722a5"
+        ],
+        "paths": [
+          "extensions/fasttext",
+          "extensions/sentencepiece"
+        ],
+        "skills": [
+          "c-cpp-memory-safety-review",
+          "c-cpp-native-boundary-review",
+          "secure-code-review-common"
+        ],
+        "priority": "P3",
+        "workload": {
+          "module_count": 2,
+          "source_file_count": 39
+        },
+        "objective": "Native JNI extensions audit (P3) — fastText and SentencePiece C++ JNI bridges, native library loading from JAR"
+      },
+      {
+        "id": "T-008-01",
+        "description": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python",
+        "module_ids": [
+          "root",
+          "android-f60ed56a",
+          "android-core-36d4dbcc",
+          "android-pytorch-native-dbc2722f",
+          "android-tokenizer-native-e947ec13",
+          "basicdataset-3025963e",
+          "bom-23f3770b",
+          "buildsrc-ae2105ec"
+        ],
+        "paths": [
+          ".",
+          "android",
+          "android/core",
+          "android/pytorch-native",
+          "android/tokenizer-native",
+          "basicdataset",
+          "bom",
+          "buildSrc"
+        ],
+        "skills": [
+          "java-injection-review",
+          "python-dependency-config-review",
+          "python-execution-review",
+          "secure-code-review-common",
+          "audit-artifact-management",
+          "audit-casebase-maintenance",
+          "audit-skill-optimization",
+          "joern-rule-maintenance"
+        ],
+        "priority": "P3",
+        "parent_task_id": "T-008",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 120
+        },
+        "objective": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python"
+      },
+      {
+        "id": "T-008-02",
+        "description": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python",
+        "module_ids": [
+          "djl-zero-be90b75f",
+          "examples-c590b3c9",
+          "integration-eb92cc52",
+          "jacoco-861e217a",
+          "model-zoo-b9ca42f9",
+          "testing-cf80cd8a",
+          "extensions-audio-fa8de76f",
+          "extensions-aws-ai-ed155019"
+        ],
+        "paths": [
+          "djl-zero",
+          "examples",
+          "extensions/audio",
+          "extensions/aws-ai",
+          "integration",
+          "jacoco",
+          "model-zoo",
+          "testing"
+        ],
+        "skills": [
+          "java-injection-review",
+          "python-dependency-config-review",
+          "python-execution-review",
+          "secure-code-review-common",
+          "audit-artifact-management",
+          "audit-casebase-maintenance",
+          "audit-skill-optimization",
+          "joern-rule-maintenance"
+        ],
+        "priority": "P3",
+        "parent_task_id": "T-008",
+        "workload": {
+          "module_count": 8,
+          "source_file_count": 292
+        },
+        "objective": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python"
+      },
+      {
+        "id": "T-008-03",
+        "description": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python",
+        "module_ids": [
+          "extensions-hadoop-4e6a9746",
+          "extensions-opencv-e8c074ed",
+          "extensions-tablesaw-30b1b535",
+          "extensions-timeseries-240bf79e",
+          "extensions-spark-70ba9e1f",
+          "extensions-spark-setup-9218a187"
+        ],
+        "paths": [
+          "extensions/hadoop",
+          "extensions/opencv",
+          "extensions/spark",
+          "extensions/spark/setup",
+          "extensions/tablesaw",
+          "extensions/timeseries"
+        ],
+        "skills": [
+          "java-injection-review",
+          "python-dependency-config-review",
+          "python-execution-review",
+          "secure-code-review-common",
+          "audit-artifact-management",
+          "audit-casebase-maintenance",
+          "audit-skill-optimization",
+          "joern-rule-maintenance"
+        ],
+        "priority": "P3",
+        "parent_task_id": "T-008",
+        "workload": {
+          "module_count": 6,
+          "source_file_count": 150
+        },
+        "objective": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python"
+      }
+    ],
+    "completeness": {
+      "total_modules_in_inventory": 44,
+      "total_modules_in_plan": 44,
+      "modules_covered_by_whole_repo": 44,
+      "modules_covered_by_sharded": 44,
+      "verification": "union of task.module_ids equals every id in modules.json"
+    },
+    "threat_coverage": {
+      "T-1": {
+        "threat": "Arbitrary native code execution via PYTORCH_EXTRA_LIBRARY_PATH",
+        "severity": "critical",
+        "assigned_tasks": [
+          "T-003"
+        ],
+        "modules": [
+          "engines-pytorch-pytorch-engine-a0e73436"
+        ]
+      },
+      "T-2": {
+        "threat": "SSRF via RemoteRepository URL",
+        "severity": "high",
+        "assigned_tasks": [
+          "T-002"
+        ],
+        "modules": [
+          "api-14c2529e"
+        ]
+      },
+      "T-3": {
+        "threat": "Model file path traversal",
+        "severity": "medium",
+        "assigned_tasks": [
+          "T-002"
+        ],
+        "modules": [
+          "api-14c2529e"
+        ]
+      },
+      "T-4": {
+        "threat": "API key exposure in GenAI extensions",
+        "severity": "medium",
+        "assigned_tasks": [
+          "T-002",
+          "T-004"
+        ],
+        "modules": [
+          "api-14c2529e",
+          "extensions-genai-10e8920d"
+        ]
+      },
+      "T-5": {
+        "threat": "Model deserialization attack via malicious model file",
+        "severity": "medium",
+        "assigned_tasks": [
+          "T-002",
+          "T-003",
+          "T-006"
+        ],
+        "modules": [
+          "api-14c2529e",
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a"
+        ]
+      },
+      "T-6": {
+        "threat": "Telemetry privacy leakage",
+        "severity": "low",
+        "assigned_tasks": [
+          "T-002"
+        ],
+        "modules": [
+          "api-14c2529e"
+        ]
+      },
+      "T-7": {
+        "threat": "GenAI base URL manipulation (SSRF)",
+        "severity": "medium",
+        "assigned_tasks": [
+          "T-004"
+        ],
+        "modules": [
+          "extensions-genai-10e8920d"
+        ]
+      },
+      "T-8": {
+        "threat": "Zip bomb / resource exhaustion via repository",
+        "severity": "low",
+        "assigned_tasks": [
+          "T-002"
+        ],
+        "modules": [
+          "api-14c2529e"
+        ]
+      }
+    },
+    "evidence_basis": [
+      "shared/modules.json — complete 44-module inventory",
+      "shared/repository-inventory.json — language distribution and file counts",
+      "shared/intelligence/architecture.json — module layers, components, security profiles",
+      "shared/intelligence/architecture.md — runtime architecture, business flows, security-relevant components",
+      "shared/intelligence/attack-surface.json — 6 attack surfaces, 26 entry points",
+      "shared/intelligence/business-flows.json — 8 business flows with data flow analysis",
+      "shared/intelligence/external-interfaces.json — 16 external interfaces",
+      "shared/intelligence/threat-model.json — 8 threat scenarios with evidence",
+      "shared/intelligence/threat-model.md — threat model, security controls analysis, audit intelligence by module",
+      "shared/intelligence/trust-boundaries.json — 6 trust boundaries with crossing points"
+    ],
+    "hutch_normalizations": [
+      {
+        "field": "concurrency",
+        "effective_field": "max_concurrency",
+        "value": 8,
+        "reason": "accepted planner field alias"
+      },
+      {
+        "field": "tasks.T-001",
+        "requested_module_count": 44,
+        "effective_task_count": 6,
+        "reason": "split to Hutch module/file workload bounds"
+      },
+      {
+        "field": "tasks.T-006",
+        "requested_module_count": 12,
+        "effective_task_count": 2,
+        "reason": "split to Hutch module/file workload bounds"
+      },
+      {
+        "field": "tasks.T-008",
+        "requested_module_count": 22,
+        "effective_task_count": 3,
+        "reason": "split to Hutch module/file workload bounds"
+      },
+      {
+        "field": "tasks.T-003.paths",
+        "requested": [
+          "engines/pytorch"
+        ],
+        "effective": [
+          "engines/pytorch/pytorch-engine",
+          "engines/pytorch/pytorch-jni",
+          "engines/pytorch/pytorch-model-zoo",
+          "engines/pytorch/pytorch-native"
+        ],
+        "reason": "module IDs are authoritative for source scope"
+      },
+      {
+        "field": "tasks.T-005.paths",
+        "requested": [
+          "extensions/tokenizers"
+        ],
+        "effective": [
+          "extensions/tokenizers",
+          "extensions/tokenizers/src/main/python"
+        ],
+        "reason": "module IDs are authoritative for source scope"
+      }
+    ],
+    "max_concurrency": 8
+  },
+  "seed_artifacts": [
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/architecture.json",
+      "destination": "shared/intelligence/architecture.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/architecture.md",
+      "destination": "shared/intelligence/architecture.md"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/attack-surface.json",
+      "destination": "shared/intelligence/attack-surface.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/business-flows.json",
+      "destination": "shared/intelligence/business-flows.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/external-interfaces.json",
+      "destination": "shared/intelligence/external-interfaces.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/threat-model.json",
+      "destination": "shared/intelligence/threat-model.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/threat-model.md",
+      "destination": "shared/intelligence/threat-model.md"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/shared/intelligence/trust-boundaries.json",
+      "destination": "shared/intelligence/trust-boundaries.json"
+    },
+    {
+      "source": "/Users/wh4lter/Workspace/Qu-Studio/runs/djl-adaptive-audit-planning-20260621-221651-899743/artifacts/audit-plan.md",
+      "destination": "shared/planning/audit-plan.md"
+    }
+  ],
+  "agents": [
+    {
+      "id": "miner-001",
+      "description": "Audits bounded repository shard T-001-01.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "security-recon",
+        "python-dependency-config-review",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "miner-002",
+      "description": "Audits bounded repository shard T-001-02.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "security-recon",
+        "python-dependency-config-review",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "miner-003",
+      "description": "Audits bounded repository shard T-001-03.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "security-recon",
+        "python-dependency-config-review",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "miner-004",
+      "description": "Audits bounded repository shard T-001-04.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "security-recon",
+        "python-dependency-config-review",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "miner-005",
+      "description": "Audits bounded repository shard T-001-05.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "security-recon",
+        "python-dependency-config-review",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "miner-006",
+      "description": "Audits bounded repository shard T-001-06.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "security-recon",
+        "python-dependency-config-review",
+        "audit-artifact-management"
+      ]
+    },
+    {
+      "id": "miner-007",
+      "description": "Audits bounded repository shard T-002.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "java-deserialization-review",
+        "java-injection-review",
+        "java-web-security-review",
+        "secure-code-review-common",
+        "vulnerability-validation"
+      ]
+    },
+    {
+      "id": "miner-008",
+      "description": "Audits bounded repository shard T-003.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "c-cpp-memory-safety-review",
+        "c-cpp-native-boundary-review",
+        "c-cpp-file-privilege-review",
+        "secure-code-review-common",
+        "vulnerability-validation"
+      ]
+    },
+    {
+      "id": "miner-009",
+      "description": "Audits bounded repository shard T-004.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "java-injection-review",
+        "java-web-security-review",
+        "java-deserialization-review",
+        "secure-code-review-common",
+        "vulnerability-validation"
+      ]
+    },
+    {
+      "id": "miner-010",
+      "description": "Audits bounded repository shard T-005.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "c-cpp-memory-safety-review",
+        "c-cpp-native-boundary-review",
+        "python-execution-review",
+        "python-web-framework-review",
+        "secure-code-review-common"
+      ]
+    },
+    {
+      "id": "miner-011",
+      "description": "Audits bounded repository shard T-006-01.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "c-cpp-memory-safety-review",
+        "c-cpp-native-boundary-review",
+        "c-cpp-file-privilege-review",
+        "secure-code-review-common"
+      ]
+    },
+    {
+      "id": "miner-012",
+      "description": "Audits bounded repository shard T-006-02.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "c-cpp-memory-safety-review",
+        "c-cpp-native-boundary-review",
+        "c-cpp-file-privilege-review",
+        "secure-code-review-common"
+      ]
+    },
+    {
+      "id": "miner-013",
+      "description": "Audits bounded repository shard T-007.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "c-cpp-memory-safety-review",
+        "c-cpp-native-boundary-review",
+        "secure-code-review-common"
+      ]
+    },
+    {
+      "id": "miner-014",
+      "description": "Audits bounded repository shard T-008-01.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "java-injection-review",
+        "python-dependency-config-review",
+        "python-execution-review",
+        "secure-code-review-common",
+        "audit-artifact-management",
+        "audit-casebase-maintenance",
+        "audit-skill-optimization",
+        "joern-rule-maintenance"
+      ]
+    },
+    {
+      "id": "miner-015",
+      "description": "Audits bounded repository shard T-008-02.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "java-injection-review",
+        "python-dependency-config-review",
+        "python-execution-review",
+        "secure-code-review-common",
+        "audit-artifact-management",
+        "audit-casebase-maintenance",
+        "audit-skill-optimization",
+        "joern-rule-maintenance"
+      ]
+    },
+    {
+      "id": "miner-016",
+      "description": "Audits bounded repository shard T-008-03.",
+      "mission": "Audit every contracted module and path against the supplied threat intelligence. Trace attacker-controlled input to sensitive operations, inspect controls, record negative results, and never silently omit a contracted module.",
+      "atlas": true,
+      "skills": [
+        "java-injection-review",
+        "python-dependency-config-review",
+        "python-execution-review",
+        "secure-code-review-common",
+        "audit-artifact-management",
+        "audit-casebase-maintenance",
+        "audit-skill-optimization",
+        "joern-rule-maintenance"
+      ]
+    },
+    {
+      "id": "coverage-reviewer",
+      "description": "Explains Hutch's deterministic module coverage calculation.",
+      "mission": "Read the deterministic coverage summary. Explain audited and justified deferred modules, gaps, and limitations without changing the summary or inventing coverage.",
+      "atlas": false,
+      "skills": []
+    },
+    {
+      "id": "finding-validator",
+      "description": "Validates and deduplicates candidates from every audit shard.",
+      "mission": "Re-read source evidence for every candidate, reject unsupported claims, deduplicate shared root causes, and retain complete shard provenance.",
+      "atlas": true,
+      "skills": []
+    },
+    {
+      "id": "report-writer",
+      "description": "Aggregates the complete campaign audit report.",
+      "mission": "Produce one evidence-linked report covering every inventory module, all validated findings, negative results, deferred work, and explicit limitations.",
+      "atlas": false,
+      "skills": []
+    }
+  ],
+  "stages": [
+    {
+      "id": "audit-001",
+      "task_id": "A-0001",
+      "agent": "miner-001",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0001-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0001-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+      "scope": {
+        "module_ids": [
+          "root",
+          "android-f60ed56a",
+          "api-14c2529e",
+          "basicdataset-3025963e",
+          "bom-23f3770b",
+          "buildsrc-ae2105ec",
+          "djl-zero-be90b75f"
+        ],
+        "paths": [
+          ".",
+          "android",
+          "api",
+          "basicdataset",
+          "bom",
+          "buildSrc",
+          "djl-zero"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0001-coverage.json",
+        "module_ids": [
+          "root",
+          "android-f60ed56a",
+          "api-14c2529e",
+          "basicdataset-3025963e",
+          "bom-23f3770b",
+          "buildsrc-ae2105ec",
+          "djl-zero-be90b75f"
+        ],
+        "module_paths": {
+          "root": ".",
+          "android-f60ed56a": "android",
+          "api-14c2529e": "api",
+          "basicdataset-3025963e": "basicdataset",
+          "bom-23f3770b": "bom",
+          "buildsrc-ae2105ec": "buildSrc",
+          "djl-zero-be90b75f": "djl-zero"
+        },
+        "source_file_counts": {
+          "root": 19,
+          "android-f60ed56a": 0,
+          "api-14c2529e": 590,
+          "basicdataset-3025963e": 86,
+          "bom-23f3770b": 1,
+          "buildsrc-ae2105ec": 11,
+          "djl-zero-be90b75f": 11
+        }
+      }
+    },
+    {
+      "id": "audit-002",
+      "task_id": "A-0002",
+      "agent": "miner-002",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0002-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0002-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+      "scope": {
+        "module_ids": [
+          "examples-c590b3c9",
+          "integration-eb92cc52",
+          "jacoco-861e217a",
+          "model-zoo-b9ca42f9",
+          "testing-cf80cd8a",
+          "android-core-36d4dbcc",
+          "android-pytorch-native-dbc2722f",
+          "android-tokenizer-native-e947ec13"
+        ],
+        "paths": [
+          "android/core",
+          "android/pytorch-native",
+          "android/tokenizer-native",
+          "examples",
+          "integration",
+          "jacoco",
+          "model-zoo",
+          "testing"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0002-coverage.json",
+        "module_ids": [
+          "examples-c590b3c9",
+          "integration-eb92cc52",
+          "jacoco-861e217a",
+          "model-zoo-b9ca42f9",
+          "testing-cf80cd8a",
+          "android-core-36d4dbcc",
+          "android-pytorch-native-dbc2722f",
+          "android-tokenizer-native-e947ec13"
+        ],
+        "module_paths": {
+          "examples-c590b3c9": "examples",
+          "integration-eb92cc52": "integration",
+          "jacoco-861e217a": "jacoco",
+          "model-zoo-b9ca42f9": "model-zoo",
+          "testing-cf80cd8a": "testing",
+          "android-core-36d4dbcc": "android/core",
+          "android-pytorch-native-dbc2722f": "android/pytorch-native",
+          "android-tokenizer-native-e947ec13": "android/tokenizer-native"
+        },
+        "source_file_counts": {
+          "examples-c590b3c9": 136,
+          "integration-eb92cc52": 78,
+          "jacoco-861e217a": 1,
+          "model-zoo-b9ca42f9": 29,
+          "testing-cf80cd8a": 6,
+          "android-core-36d4dbcc": 3,
+          "android-pytorch-native-dbc2722f": 0,
+          "android-tokenizer-native-e947ec13": 0
+        }
+      }
+    },
+    {
+      "id": "audit-003",
+      "task_id": "A-0003",
+      "agent": "miner-003",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0003-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0003-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+      "scope": {
+        "module_ids": [
+          "extensions-audio-fa8de76f",
+          "extensions-aws-ai-ed155019",
+          "extensions-fasttext-1fbabe19",
+          "extensions-genai-10e8920d",
+          "extensions-hadoop-4e6a9746",
+          "extensions-opencv-e8c074ed",
+          "extensions-sentencepiece-57e722a5",
+          "extensions-spark-70ba9e1f"
+        ],
+        "paths": [
+          "extensions/audio",
+          "extensions/aws-ai",
+          "extensions/fasttext",
+          "extensions/genai",
+          "extensions/hadoop",
+          "extensions/opencv",
+          "extensions/sentencepiece",
+          "extensions/spark"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0003-coverage.json",
+        "module_ids": [
+          "extensions-audio-fa8de76f",
+          "extensions-aws-ai-ed155019",
+          "extensions-fasttext-1fbabe19",
+          "extensions-genai-10e8920d",
+          "extensions-hadoop-4e6a9746",
+          "extensions-opencv-e8c074ed",
+          "extensions-sentencepiece-57e722a5",
+          "extensions-spark-70ba9e1f"
+        ],
+        "module_paths": {
+          "extensions-audio-fa8de76f": "extensions/audio",
+          "extensions-aws-ai-ed155019": "extensions/aws-ai",
+          "extensions-fasttext-1fbabe19": "extensions/fasttext",
+          "extensions-genai-10e8920d": "extensions/genai",
+          "extensions-hadoop-4e6a9746": "extensions/hadoop",
+          "extensions-opencv-e8c074ed": "extensions/opencv",
+          "extensions-sentencepiece-57e722a5": "extensions/sentencepiece",
+          "extensions-spark-70ba9e1f": "extensions/spark"
+        },
+        "source_file_counts": {
+          "extensions-audio-fa8de76f": 24,
+          "extensions-aws-ai-ed155019": 7,
+          "extensions-fasttext-1fbabe19": 24,
+          "extensions-genai-10e8920d": 141,
+          "extensions-hadoop-4e6a9746": 7,
+          "extensions-opencv-e8c074ed": 6,
+          "extensions-sentencepiece-57e722a5": 15,
+          "extensions-spark-70ba9e1f": 21
+        }
+      }
+    },
+    {
+      "id": "audit-004",
+      "task_id": "A-0004",
+      "agent": "miner-004",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0004-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0004-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+      "scope": {
+        "module_ids": [
+          "extensions-tablesaw-30b1b535",
+          "extensions-timeseries-240bf79e",
+          "extensions-tokenizers-0d622459",
+          "engines-ml-lightgbm-8fb5bacd",
+          "engines-ml-xgboost-dd147db5",
+          "engines-mxnet-jnarator-97a79915",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20"
+        ],
+        "paths": [
+          "engines/ml/lightgbm",
+          "engines/ml/xgboost",
+          "engines/mxnet/jnarator",
+          "engines/mxnet/mxnet-engine",
+          "engines/mxnet/mxnet-model-zoo",
+          "extensions/tablesaw",
+          "extensions/timeseries",
+          "extensions/tokenizers"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0004-coverage.json",
+        "module_ids": [
+          "extensions-tablesaw-30b1b535",
+          "extensions-timeseries-240bf79e",
+          "extensions-tokenizers-0d622459",
+          "engines-ml-lightgbm-8fb5bacd",
+          "engines-ml-xgboost-dd147db5",
+          "engines-mxnet-jnarator-97a79915",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20"
+        ],
+        "module_paths": {
+          "extensions-tablesaw-30b1b535": "extensions/tablesaw",
+          "extensions-timeseries-240bf79e": "extensions/timeseries",
+          "extensions-tokenizers-0d622459": "extensions/tokenizers",
+          "engines-ml-lightgbm-8fb5bacd": "engines/ml/lightgbm",
+          "engines-ml-xgboost-dd147db5": "engines/ml/xgboost",
+          "engines-mxnet-jnarator-97a79915": "engines/mxnet/jnarator",
+          "engines-mxnet-mxnet-engine-cd0e732a": "engines/mxnet/mxnet-engine",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20": "engines/mxnet/mxnet-model-zoo"
+        },
+        "source_file_counts": {
+          "extensions-tablesaw-30b1b535": 5,
+          "extensions-timeseries-240bf79e": 84,
+          "extensions-tokenizers-0d622459": 97,
+          "engines-ml-lightgbm-8fb5bacd": 14,
+          "engines-ml-xgboost-dd147db5": 14,
+          "engines-mxnet-jnarator-97a79915": 10,
+          "engines-mxnet-mxnet-engine-cd0e732a": 34,
+          "engines-mxnet-mxnet-model-zoo-d6dffc20": 19
+        }
+      }
+    },
+    {
+      "id": "audit-005",
+      "task_id": "A-0005",
+      "agent": "miner-005",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0005-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0005-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+      "scope": {
+        "module_ids": [
+          "engines-mxnet-native-ebb498ac",
+          "engines-onnxruntime-onnxruntime-android-c7540b4a",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a",
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-pytorch-pytorch-jni-64ae5dd4",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b",
+          "engines-pytorch-pytorch-native-ee60a5e2",
+          "engines-tensorflow-tensorflow-api-4722ddb5"
+        ],
+        "paths": [
+          "engines/mxnet/native",
+          "engines/onnxruntime/onnxruntime-android",
+          "engines/onnxruntime/onnxruntime-engine",
+          "engines/pytorch/pytorch-engine",
+          "engines/pytorch/pytorch-jni",
+          "engines/pytorch/pytorch-model-zoo",
+          "engines/pytorch/pytorch-native",
+          "engines/tensorflow/tensorflow-api"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0005-coverage.json",
+        "module_ids": [
+          "engines-mxnet-native-ebb498ac",
+          "engines-onnxruntime-onnxruntime-android-c7540b4a",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a",
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-pytorch-pytorch-jni-64ae5dd4",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b",
+          "engines-pytorch-pytorch-native-ee60a5e2",
+          "engines-tensorflow-tensorflow-api-4722ddb5"
+        ],
+        "module_paths": {
+          "engines-mxnet-native-ebb498ac": "engines/mxnet/native",
+          "engines-onnxruntime-onnxruntime-android-c7540b4a": "engines/onnxruntime/onnxruntime-android",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a": "engines/onnxruntime/onnxruntime-engine",
+          "engines-pytorch-pytorch-engine-a0e73436": "engines/pytorch/pytorch-engine",
+          "engines-pytorch-pytorch-jni-64ae5dd4": "engines/pytorch/pytorch-jni",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b": "engines/pytorch/pytorch-model-zoo",
+          "engines-pytorch-pytorch-native-ee60a5e2": "engines/pytorch/pytorch-native",
+          "engines-tensorflow-tensorflow-api-4722ddb5": "engines/tensorflow/tensorflow-api"
+        },
+        "source_file_counts": {
+          "engines-mxnet-native-ebb498ac": 1,
+          "engines-onnxruntime-onnxruntime-android-c7540b4a": 1,
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a": 25,
+          "engines-pytorch-pytorch-engine-a0e73436": 30,
+          "engines-pytorch-pytorch-jni-64ae5dd4": 1,
+          "engines-pytorch-pytorch-model-zoo-aacbc85b": 19,
+          "engines-pytorch-pytorch-native-ee60a5e2": 28,
+          "engines-tensorflow-tensorflow-api-4722ddb5": 1
+        }
+      }
+    },
+    {
+      "id": "audit-006",
+      "task_id": "A-0006",
+      "agent": "miner-006",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0006-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0006-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Whole-repo security reconnaissance — cross-cutting surface scan for secrets, dependency vulnerabilities, and anti-patterns across all 44 modules",
+      "scope": {
+        "module_ids": [
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4",
+          "engines-tensorflow-tensorflow-native-cbdd69dc",
+          "extensions-spark-setup-9218a187",
+          "extensions-tokenizers-src-main-python-056cc7cd"
+        ],
+        "paths": [
+          "engines/tensorflow/tensorflow-engine",
+          "engines/tensorflow/tensorflow-model-zoo",
+          "engines/tensorflow/tensorflow-native",
+          "extensions/spark/setup",
+          "extensions/tokenizers/src/main/python"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0006-coverage.json",
+        "module_ids": [
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4",
+          "engines-tensorflow-tensorflow-native-cbdd69dc",
+          "extensions-spark-setup-9218a187",
+          "extensions-tokenizers-src-main-python-056cc7cd"
+        ],
+        "module_paths": {
+          "engines-tensorflow-tensorflow-engine-0405c322": "engines/tensorflow/tensorflow-engine",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4": "engines/tensorflow/tensorflow-model-zoo",
+          "engines-tensorflow-tensorflow-native-cbdd69dc": "engines/tensorflow/tensorflow-native",
+          "extensions-spark-setup-9218a187": "extensions/spark/setup",
+          "extensions-tokenizers-src-main-python-056cc7cd": "extensions/tokenizers/src/main/python"
+        },
+        "source_file_counts": {
+          "engines-tensorflow-tensorflow-engine-0405c322": 20,
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4": 11,
+          "engines-tensorflow-tensorflow-native-cbdd69dc": 1,
+          "extensions-spark-setup-9218a187": 27,
+          "extensions-tokenizers-src-main-python-056cc7cd": 17
+        }
+      }
+    },
+    {
+      "id": "audit-007",
+      "task_id": "A-0007",
+      "agent": "miner-007",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0007-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0007-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Core API deep audit (P0) — RemoteRepository SSRF, JSON deserialization, FilenameUtils, Model loading, Engine SPI, telemetry",
+      "scope": {
+        "module_ids": [
+          "api-14c2529e"
+        ],
+        "paths": [
+          "api"
+        ],
+        "threat_ids": [
+          "T-2",
+          "T-3",
+          "T-4",
+          "T-5",
+          "T-6"
+        ]
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0007-coverage.json",
+        "module_ids": [
+          "api-14c2529e"
+        ],
+        "module_paths": {
+          "api-14c2529e": "api"
+        },
+        "source_file_counts": {
+          "api-14c2529e": 590
+        }
+      }
+    },
+    {
+      "id": "audit-008",
+      "task_id": "A-0008",
+      "agent": "miner-008",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0008-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0008-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "PyTorch engine & native bridge audit (P0/P1) — PYTORCH_EXTRA_LIBRARY_PATH arbitrary native code execution (T-1), JNI bridge, C/C++ native code",
+      "scope": {
+        "module_ids": [
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-pytorch-pytorch-jni-64ae5dd4",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b",
+          "engines-pytorch-pytorch-native-ee60a5e2"
+        ],
+        "paths": [
+          "engines/pytorch/pytorch-engine",
+          "engines/pytorch/pytorch-jni",
+          "engines/pytorch/pytorch-model-zoo",
+          "engines/pytorch/pytorch-native"
+        ],
+        "threat_ids": [
+          "T-1",
+          "T-5"
+        ]
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0008-coverage.json",
+        "module_ids": [
+          "engines-pytorch-pytorch-engine-a0e73436",
+          "engines-pytorch-pytorch-jni-64ae5dd4",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b",
+          "engines-pytorch-pytorch-native-ee60a5e2"
+        ],
+        "module_paths": {
+          "engines-pytorch-pytorch-engine-a0e73436": "engines/pytorch/pytorch-engine",
+          "engines-pytorch-pytorch-jni-64ae5dd4": "engines/pytorch/pytorch-jni",
+          "engines-pytorch-pytorch-model-zoo-aacbc85b": "engines/pytorch/pytorch-model-zoo",
+          "engines-pytorch-pytorch-native-ee60a5e2": "engines/pytorch/pytorch-native"
+        },
+        "source_file_counts": {
+          "engines-pytorch-pytorch-engine-a0e73436": 30,
+          "engines-pytorch-pytorch-jni-64ae5dd4": 1,
+          "engines-pytorch-pytorch-model-zoo-aacbc85b": 19,
+          "engines-pytorch-pytorch-native-ee60a5e2": 28
+        }
+      }
+    },
+    {
+      "id": "audit-009",
+      "task_id": "A-0009",
+      "agent": "miner-009",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0009-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0009-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "GenAI extension audit (P1) — baseUrl SSRF (T-7), API key exposure (T-4), external API data flow, response deserialization",
+      "scope": {
+        "module_ids": [
+          "extensions-genai-10e8920d"
+        ],
+        "paths": [
+          "extensions/genai"
+        ],
+        "threat_ids": [
+          "T-4",
+          "T-7"
+        ]
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0009-coverage.json",
+        "module_ids": [
+          "extensions-genai-10e8920d"
+        ],
+        "module_paths": {
+          "extensions-genai-10e8920d": "extensions/genai"
+        },
+        "source_file_counts": {
+          "extensions-genai-10e8920d": 141
+        }
+      }
+    },
+    {
+      "id": "audit-010",
+      "task_id": "A-0010",
+      "agent": "miner-010",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0010-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0010-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Tokenizers extension & Rust JNI audit (P1) — djl_tokenizer native loading, Rust/JNI boundary, Python bindings",
+      "scope": {
+        "module_ids": [
+          "extensions-tokenizers-0d622459",
+          "extensions-tokenizers-src-main-python-056cc7cd"
+        ],
+        "paths": [
+          "extensions/tokenizers",
+          "extensions/tokenizers/src/main/python"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0010-coverage.json",
+        "module_ids": [
+          "extensions-tokenizers-0d622459",
+          "extensions-tokenizers-src-main-python-056cc7cd"
+        ],
+        "module_paths": {
+          "extensions-tokenizers-0d622459": "extensions/tokenizers",
+          "extensions-tokenizers-src-main-python-056cc7cd": "extensions/tokenizers/src/main/python"
+        },
+        "source_file_counts": {
+          "extensions-tokenizers-0d622459": 97,
+          "extensions-tokenizers-src-main-python-056cc7cd": 17
+        }
+      }
+    },
+    {
+      "id": "audit-011",
+      "task_id": "A-0011",
+      "agent": "miner-011",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0011-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0011-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "MXNet, TensorFlow, ONNX Runtime & ML engines audit (P2) — JNI/JNA bridges, native library loading, model deserialization",
+      "scope": {
+        "module_ids": [
+          "engines-mxnet-jnarator-97a79915",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20",
+          "engines-mxnet-native-ebb498ac",
+          "engines-tensorflow-tensorflow-api-4722ddb5",
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4",
+          "engines-tensorflow-tensorflow-native-cbdd69dc"
+        ],
+        "paths": [
+          "engines/mxnet/jnarator",
+          "engines/mxnet/mxnet-engine",
+          "engines/mxnet/mxnet-model-zoo",
+          "engines/mxnet/native",
+          "engines/tensorflow/tensorflow-api",
+          "engines/tensorflow/tensorflow-engine",
+          "engines/tensorflow/tensorflow-model-zoo",
+          "engines/tensorflow/tensorflow-native"
+        ],
+        "threat_ids": [
+          "T-5"
+        ]
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0011-coverage.json",
+        "module_ids": [
+          "engines-mxnet-jnarator-97a79915",
+          "engines-mxnet-mxnet-engine-cd0e732a",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20",
+          "engines-mxnet-native-ebb498ac",
+          "engines-tensorflow-tensorflow-api-4722ddb5",
+          "engines-tensorflow-tensorflow-engine-0405c322",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4",
+          "engines-tensorflow-tensorflow-native-cbdd69dc"
+        ],
+        "module_paths": {
+          "engines-mxnet-jnarator-97a79915": "engines/mxnet/jnarator",
+          "engines-mxnet-mxnet-engine-cd0e732a": "engines/mxnet/mxnet-engine",
+          "engines-mxnet-mxnet-model-zoo-d6dffc20": "engines/mxnet/mxnet-model-zoo",
+          "engines-mxnet-native-ebb498ac": "engines/mxnet/native",
+          "engines-tensorflow-tensorflow-api-4722ddb5": "engines/tensorflow/tensorflow-api",
+          "engines-tensorflow-tensorflow-engine-0405c322": "engines/tensorflow/tensorflow-engine",
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4": "engines/tensorflow/tensorflow-model-zoo",
+          "engines-tensorflow-tensorflow-native-cbdd69dc": "engines/tensorflow/tensorflow-native"
+        },
+        "source_file_counts": {
+          "engines-mxnet-jnarator-97a79915": 10,
+          "engines-mxnet-mxnet-engine-cd0e732a": 34,
+          "engines-mxnet-mxnet-model-zoo-d6dffc20": 19,
+          "engines-mxnet-native-ebb498ac": 1,
+          "engines-tensorflow-tensorflow-api-4722ddb5": 1,
+          "engines-tensorflow-tensorflow-engine-0405c322": 20,
+          "engines-tensorflow-tensorflow-model-zoo-045eedb4": 11,
+          "engines-tensorflow-tensorflow-native-cbdd69dc": 1
+        }
+      }
+    },
+    {
+      "id": "audit-012",
+      "task_id": "A-0012",
+      "agent": "miner-012",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0012-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0012-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "MXNet, TensorFlow, ONNX Runtime & ML engines audit (P2) — JNI/JNA bridges, native library loading, model deserialization",
+      "scope": {
+        "module_ids": [
+          "engines-onnxruntime-onnxruntime-android-c7540b4a",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a",
+          "engines-ml-lightgbm-8fb5bacd",
+          "engines-ml-xgboost-dd147db5"
+        ],
+        "paths": [
+          "engines/ml/lightgbm",
+          "engines/ml/xgboost",
+          "engines/onnxruntime/onnxruntime-android",
+          "engines/onnxruntime/onnxruntime-engine"
+        ],
+        "threat_ids": [
+          "T-5"
+        ]
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0012-coverage.json",
+        "module_ids": [
+          "engines-onnxruntime-onnxruntime-android-c7540b4a",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a",
+          "engines-ml-lightgbm-8fb5bacd",
+          "engines-ml-xgboost-dd147db5"
+        ],
+        "module_paths": {
+          "engines-onnxruntime-onnxruntime-android-c7540b4a": "engines/onnxruntime/onnxruntime-android",
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a": "engines/onnxruntime/onnxruntime-engine",
+          "engines-ml-lightgbm-8fb5bacd": "engines/ml/lightgbm",
+          "engines-ml-xgboost-dd147db5": "engines/ml/xgboost"
+        },
+        "source_file_counts": {
+          "engines-onnxruntime-onnxruntime-android-c7540b4a": 1,
+          "engines-onnxruntime-onnxruntime-engine-ae793f4a": 25,
+          "engines-ml-lightgbm-8fb5bacd": 14,
+          "engines-ml-xgboost-dd147db5": 14
+        }
+      }
+    },
+    {
+      "id": "audit-013",
+      "task_id": "A-0013",
+      "agent": "miner-013",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0013-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0013-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Native JNI extensions audit (P3) — fastText and SentencePiece C++ JNI bridges, native library loading from JAR",
+      "scope": {
+        "module_ids": [
+          "extensions-fasttext-1fbabe19",
+          "extensions-sentencepiece-57e722a5"
+        ],
+        "paths": [
+          "extensions/fasttext",
+          "extensions/sentencepiece"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0013-coverage.json",
+        "module_ids": [
+          "extensions-fasttext-1fbabe19",
+          "extensions-sentencepiece-57e722a5"
+        ],
+        "module_paths": {
+          "extensions-fasttext-1fbabe19": "extensions/fasttext",
+          "extensions-sentencepiece-57e722a5": "extensions/sentencepiece"
+        },
+        "source_file_counts": {
+          "extensions-fasttext-1fbabe19": 24,
+          "extensions-sentencepiece-57e722a5": 15
+        }
+      }
+    },
+    {
+      "id": "audit-014",
+      "task_id": "A-0014",
+      "agent": "miner-014",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0014-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0014-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python",
+      "scope": {
+        "module_ids": [
+          "root",
+          "android-f60ed56a",
+          "android-core-36d4dbcc",
+          "android-pytorch-native-dbc2722f",
+          "android-tokenizer-native-e947ec13",
+          "basicdataset-3025963e",
+          "bom-23f3770b",
+          "buildsrc-ae2105ec"
+        ],
+        "paths": [
+          ".",
+          "android",
+          "android/core",
+          "android/pytorch-native",
+          "android/tokenizer-native",
+          "basicdataset",
+          "bom",
+          "buildSrc"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0014-coverage.json",
+        "module_ids": [
+          "root",
+          "android-f60ed56a",
+          "android-core-36d4dbcc",
+          "android-pytorch-native-dbc2722f",
+          "android-tokenizer-native-e947ec13",
+          "basicdataset-3025963e",
+          "bom-23f3770b",
+          "buildsrc-ae2105ec"
+        ],
+        "module_paths": {
+          "root": ".",
+          "android-f60ed56a": "android",
+          "android-core-36d4dbcc": "android/core",
+          "android-pytorch-native-dbc2722f": "android/pytorch-native",
+          "android-tokenizer-native-e947ec13": "android/tokenizer-native",
+          "basicdataset-3025963e": "basicdataset",
+          "bom-23f3770b": "bom",
+          "buildsrc-ae2105ec": "buildSrc"
+        },
+        "source_file_counts": {
+          "root": 19,
+          "android-f60ed56a": 0,
+          "android-core-36d4dbcc": 3,
+          "android-pytorch-native-dbc2722f": 0,
+          "android-tokenizer-native-e947ec13": 0,
+          "basicdataset-3025963e": 86,
+          "bom-23f3770b": 1,
+          "buildsrc-ae2105ec": 11
+        }
+      }
+    },
+    {
+      "id": "audit-015",
+      "task_id": "A-0015",
+      "agent": "miner-015",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0015-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0015-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python",
+      "scope": {
+        "module_ids": [
+          "djl-zero-be90b75f",
+          "examples-c590b3c9",
+          "integration-eb92cc52",
+          "jacoco-861e217a",
+          "model-zoo-b9ca42f9",
+          "testing-cf80cd8a",
+          "extensions-audio-fa8de76f",
+          "extensions-aws-ai-ed155019"
+        ],
+        "paths": [
+          "djl-zero",
+          "examples",
+          "extensions/audio",
+          "extensions/aws-ai",
+          "integration",
+          "jacoco",
+          "model-zoo",
+          "testing"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0015-coverage.json",
+        "module_ids": [
+          "djl-zero-be90b75f",
+          "examples-c590b3c9",
+          "integration-eb92cc52",
+          "jacoco-861e217a",
+          "model-zoo-b9ca42f9",
+          "testing-cf80cd8a",
+          "extensions-audio-fa8de76f",
+          "extensions-aws-ai-ed155019"
+        ],
+        "module_paths": {
+          "djl-zero-be90b75f": "djl-zero",
+          "examples-c590b3c9": "examples",
+          "integration-eb92cc52": "integration",
+          "jacoco-861e217a": "jacoco",
+          "model-zoo-b9ca42f9": "model-zoo",
+          "testing-cf80cd8a": "testing",
+          "extensions-audio-fa8de76f": "extensions/audio",
+          "extensions-aws-ai-ed155019": "extensions/aws-ai"
+        },
+        "source_file_counts": {
+          "djl-zero-be90b75f": 11,
+          "examples-c590b3c9": 136,
+          "integration-eb92cc52": 78,
+          "jacoco-861e217a": 1,
+          "model-zoo-b9ca42f9": 29,
+          "testing-cf80cd8a": 6,
+          "extensions-audio-fa8de76f": 24,
+          "extensions-aws-ai-ed155019": 7
+        }
+      }
+    },
+    {
+      "id": "audit-016",
+      "task_id": "A-0016",
+      "agent": "miner-016",
+      "depends_on": [],
+      "artifact": "artifacts/shards/a-0016-audit.md",
+      "required_artifacts": [
+        "artifacts/shards/a-0016-coverage.json"
+      ],
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json"
+      ],
+      "required_sections": [
+        "Scope and Method",
+        "Module Coverage",
+        "Candidate Findings",
+        "Reviewed Hotspots and Negative Results",
+        "Evidence and Limitations"
+      ],
+      "objective": "Infrastructure, build & remaining modules audit (P3/P4) — Gradle build, Android, model zoo, datasets, examples, Java extensions, Spark/Python",
+      "scope": {
+        "module_ids": [
+          "extensions-hadoop-4e6a9746",
+          "extensions-opencv-e8c074ed",
+          "extensions-tablesaw-30b1b535",
+          "extensions-timeseries-240bf79e",
+          "extensions-spark-70ba9e1f",
+          "extensions-spark-setup-9218a187"
+        ],
+        "paths": [
+          "extensions/hadoop",
+          "extensions/opencv",
+          "extensions/spark",
+          "extensions/spark/setup",
+          "extensions/tablesaw",
+          "extensions/timeseries"
+        ],
+        "threat_ids": []
+      },
+      "coverage_contract": {
+        "artifact": "artifacts/shards/a-0016-coverage.json",
+        "module_ids": [
+          "extensions-hadoop-4e6a9746",
+          "extensions-opencv-e8c074ed",
+          "extensions-tablesaw-30b1b535",
+          "extensions-timeseries-240bf79e",
+          "extensions-spark-70ba9e1f",
+          "extensions-spark-setup-9218a187"
+        ],
+        "module_paths": {
+          "extensions-hadoop-4e6a9746": "extensions/hadoop",
+          "extensions-opencv-e8c074ed": "extensions/opencv",
+          "extensions-tablesaw-30b1b535": "extensions/tablesaw",
+          "extensions-timeseries-240bf79e": "extensions/timeseries",
+          "extensions-spark-70ba9e1f": "extensions/spark",
+          "extensions-spark-setup-9218a187": "extensions/spark/setup"
+        },
+        "source_file_counts": {
+          "extensions-hadoop-4e6a9746": 7,
+          "extensions-opencv-e8c074ed": 6,
+          "extensions-tablesaw-30b1b535": 5,
+          "extensions-timeseries-240bf79e": 84,
+          "extensions-spark-70ba9e1f": 21,
+          "extensions-spark-setup-9218a187": 27
+        }
+      }
+    },
+    {
+      "id": "coverage-gate",
+      "task_id": "G-0001",
+      "agent": "coverage-reviewer",
+      "depends_on": [
+        "audit-001",
+        "audit-002",
+        "audit-003",
+        "audit-004",
+        "audit-005",
+        "audit-006",
+        "audit-007",
+        "audit-008",
+        "audit-009",
+        "audit-010",
+        "audit-011",
+        "audit-012",
+        "audit-013",
+        "audit-014",
+        "audit-015",
+        "audit-016"
+      ],
+      "artifact": "artifacts/coverage-report.md",
+      "inputs": [
+        "artifacts/coverage-summary.json",
+        "artifacts/shards/a-0001-audit.md",
+        "artifacts/shards/a-0002-audit.md",
+        "artifacts/shards/a-0003-audit.md",
+        "artifacts/shards/a-0004-audit.md",
+        "artifacts/shards/a-0005-audit.md",
+        "artifacts/shards/a-0006-audit.md",
+        "artifacts/shards/a-0007-audit.md",
+        "artifacts/shards/a-0008-audit.md",
+        "artifacts/shards/a-0009-audit.md",
+        "artifacts/shards/a-0010-audit.md",
+        "artifacts/shards/a-0011-audit.md",
+        "artifacts/shards/a-0012-audit.md",
+        "artifacts/shards/a-0013-audit.md",
+        "artifacts/shards/a-0014-audit.md",
+        "artifacts/shards/a-0015-audit.md",
+        "artifacts/shards/a-0016-audit.md"
+      ],
+      "required_sections": [
+        "Coverage Summary",
+        "Audited Modules",
+        "Deferred Modules",
+        "Coverage Limitations"
+      ],
+      "objective": "Explain the deterministic coverage gate result for the complete module inventory.",
+      "coverage_gate": {
+        "inventory": "shared/modules.json",
+        "audit_stages": [
+          "audit-001",
+          "audit-002",
+          "audit-003",
+          "audit-004",
+          "audit-005",
+          "audit-006",
+          "audit-007",
+          "audit-008",
+          "audit-009",
+          "audit-010",
+          "audit-011",
+          "audit-012",
+          "audit-013",
+          "audit-014",
+          "audit-015",
+          "audit-016"
+        ],
+        "artifact": "artifacts/coverage-summary.json"
+      }
+    },
+    {
+      "id": "finding-validation",
+      "task_id": "V-0001",
+      "agent": "finding-validator",
+      "depends_on": [
+        "coverage-gate"
+      ],
+      "artifact": "artifacts/finding-validation.md",
+      "inputs": [
+        "artifacts/coverage-summary.json",
+        "artifacts/shards/a-0001-audit.md",
+        "artifacts/shards/a-0002-audit.md",
+        "artifacts/shards/a-0003-audit.md",
+        "artifacts/shards/a-0004-audit.md",
+        "artifacts/shards/a-0005-audit.md",
+        "artifacts/shards/a-0006-audit.md",
+        "artifacts/shards/a-0007-audit.md",
+        "artifacts/shards/a-0008-audit.md",
+        "artifacts/shards/a-0009-audit.md",
+        "artifacts/shards/a-0010-audit.md",
+        "artifacts/shards/a-0011-audit.md",
+        "artifacts/shards/a-0012-audit.md",
+        "artifacts/shards/a-0013-audit.md",
+        "artifacts/shards/a-0014-audit.md",
+        "artifacts/shards/a-0015-audit.md",
+        "artifacts/shards/a-0016-audit.md",
+        "outbox/A-0001.result.json",
+        "outbox/A-0002.result.json",
+        "outbox/A-0003.result.json",
+        "outbox/A-0004.result.json",
+        "outbox/A-0005.result.json",
+        "outbox/A-0006.result.json",
+        "outbox/A-0007.result.json",
+        "outbox/A-0008.result.json",
+        "outbox/A-0009.result.json",
+        "outbox/A-0010.result.json",
+        "outbox/A-0011.result.json",
+        "outbox/A-0012.result.json",
+        "outbox/A-0013.result.json",
+        "outbox/A-0014.result.json",
+        "outbox/A-0015.result.json",
+        "outbox/A-0016.result.json"
+      ],
+      "required_sections": [
+        "Validation Method",
+        "Candidate Disposition",
+        "Validated Findings",
+        "Rejected Candidates",
+        "Evidence and Limitations"
+      ],
+      "objective": "Validate and deduplicate every shard candidate against the immutable source snapshot."
+    },
+    {
+      "id": "final-report",
+      "task_id": "R-0001",
+      "agent": "report-writer",
+      "depends_on": [
+        "finding-validation"
+      ],
+      "artifact": "artifacts/final-report.md",
+      "inputs": [
+        "shared/repository-inventory.json",
+        "shared/modules.json",
+        "shared/audit-plan.json",
+        "artifacts/coverage-summary.json",
+        "artifacts/coverage-report.md",
+        "artifacts/finding-validation.md",
+        "artifacts/shards/a-0001-audit.md",
+        "artifacts/shards/a-0002-audit.md",
+        "artifacts/shards/a-0003-audit.md",
+        "artifacts/shards/a-0004-audit.md",
+        "artifacts/shards/a-0005-audit.md",
+        "artifacts/shards/a-0006-audit.md",
+        "artifacts/shards/a-0007-audit.md",
+        "artifacts/shards/a-0008-audit.md",
+        "artifacts/shards/a-0009-audit.md",
+        "artifacts/shards/a-0010-audit.md",
+        "artifacts/shards/a-0011-audit.md",
+        "artifacts/shards/a-0012-audit.md",
+        "artifacts/shards/a-0013-audit.md",
+        "artifacts/shards/a-0014-audit.md",
+        "artifacts/shards/a-0015-audit.md",
+        "artifacts/shards/a-0016-audit.md"
+      ],
+      "required_sections": [
+        "Executive Summary",
+        "Scope and Constraints",
+        "Architecture and Attack Surface",
+        "Module Coverage",
+        "Validated Findings",
+        "Rejected Candidates and Leads",
+        "Remediation Priorities",
+        "Evidence and Limitations"
+      ],
+      "objective": "Aggregate the complete audit campaign without silently dropping a module, shard, candidate, or limitation.",
+      "report_consistency": {
+        "validation_result": "outbox/V-0001.result.json",
+        "audit_results": [
+          "outbox/A-0001.result.json",
+          "outbox/A-0002.result.json",
+          "outbox/A-0003.result.json",
+          "outbox/A-0004.result.json",
+          "outbox/A-0005.result.json",
+          "outbox/A-0006.result.json",
+          "outbox/A-0007.result.json",
+          "outbox/A-0008.result.json",
+          "outbox/A-0009.result.json",
+          "outbox/A-0010.result.json",
+          "outbox/A-0011.result.json",
+          "outbox/A-0012.result.json",
+          "outbox/A-0013.result.json",
+          "outbox/A-0014.result.json",
+          "outbox/A-0015.result.json",
+          "outbox/A-0016.result.json"
+        ]
+      }
+    }
+  ]
+}

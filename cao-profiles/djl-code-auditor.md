@@ -1,7 +1,7 @@
 ---
 name: djl-code-auditor
 description: Performs threat-driven, evidence-backed Java/JVM source review of a DJL snapshot.
-provider: codex
+provider: opencode_cli
 role: reviewer
 allowedTools:
   - fs_read

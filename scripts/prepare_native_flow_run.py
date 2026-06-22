@@ -10,7 +10,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from run_cao_flow import atomic_json, create_snapshot, now, source_fingerprint, task_document
+from agent_cells import prepare_agent_cells
+from run_cao_flow import (
+    atomic_json,
+    create_snapshot,
+    now,
+    prepare_shared_contracts,
+    source_fingerprint,
+    task_document,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +36,7 @@ def unique_run_dir(workflow_name: str) -> Path:
     return ROOT / "runs" / f"{workflow_name}-{stamp}"
 
 
-def prepare(workflow_path: Path) -> dict[str, Any]:
+def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, Any]:
     workflow = load_workflow(workflow_path.resolve())
     target = Path(workflow["target"]).resolve()
     if not (target / ".git").exists():
@@ -46,14 +54,34 @@ def prepare(workflow_path: Path) -> dict[str, Any]:
     )
     atomic_json(run_dir / "shared" / "source-fingerprint.json", fingerprint)
     atomic_json(run_dir / "shared" / "snapshot-manifest.json", snapshot)
+    prepare_shared_contracts(workflow, run_dir)
     atomic_json(run_dir / "workflow.json", workflow)
 
     generated_profiles = {
         agent["id"]: f"{workflow['name']}-{agent['id']}" for agent in workflow["agents"]
     }
+    profiles_dir = (
+        profiles_dir.resolve()
+        if profiles_dir
+        else ROOT / "generated" / workflow["name"] / "profiles"
+    )
+    cells = prepare_agent_cells(
+        workflow,
+        run_dir,
+        (
+            {
+                "id": agent["id"],
+                "profile": generated_profiles[agent["id"]],
+                "skills": agent.get("skills", []),
+                "profile_source": profiles_dir / f"{generated_profiles[agent['id']]}.md",
+            }
+            for agent in workflow["agents"]
+        ),
+    )
     for stage in workflow["stages"]:
         document = task_document(stage, run_dir)
         document["agent_profile"] = generated_profiles[stage["agent"]]
+        document["agent_cell"] = cells[stage["agent"]]
         document["finding_contract"] = {
             "required_for_candidates": [
                 "id",
@@ -87,11 +115,14 @@ def prepare(workflow_path: Path) -> dict[str, Any]:
         "cao_session": f"cao-flow-{workflow['name']}",
         "target_fingerprint": fingerprint,
         "snapshot": snapshot,
+        "campaign": workflow.get("campaign"),
         "stages": {
             stage["id"]: {
                 "status": "pending",
                 "task_id": stage["task_id"],
                 "agent_profile": generated_profiles[stage["agent"]],
+                "agent_cell": stage["agent"],
+                "workspace": cells[stage["agent"]]["workspace"],
             }
             for stage in workflow["stages"]
         },
@@ -117,12 +148,16 @@ def prepare(workflow_path: Path) -> dict[str, Any]:
         "workflow": str(run_dir / "workflow.json"),
         "state_file": str(run_dir / "state.json"),
         "target_snapshot": str(run_dir / "shared" / "target-snapshot"),
+        "agent_cells": cells,
+        "campaign": workflow.get("campaign"),
         "stages": [
             {
                 "id": stage["id"],
                 "task_id": stage["task_id"],
                 "task_file": str(run_dir / "inbox" / f"{stage['task_id']}.task.json"),
                 "profile": generated_profiles[stage["agent"]],
+                "agent_cell": stage["agent"],
+                "workspace": cells[stage["agent"]]["workspace"],
                 "depends_on": stage.get("depends_on", []),
             }
             for stage in workflow["stages"]
@@ -144,9 +179,10 @@ def prepare(workflow_path: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow", type=Path)
+    parser.add_argument("--profiles-dir", type=Path)
     args = parser.parse_args()
     try:
-        print(json.dumps(prepare(args.workflow), ensure_ascii=False))
+        print(json.dumps(prepare(args.workflow, args.profiles_dir), ensure_ascii=False))
         return 0
     except Exception as error:
         print(f"prepare failed: {error}", file=sys.stderr)
