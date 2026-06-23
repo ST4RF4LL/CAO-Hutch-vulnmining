@@ -18,6 +18,7 @@ from agent_cells import (
     runtime_skill_name,
     validate_cell_specs,
 )
+from hutch_paths import expand_config_path, expand_config_paths, repo_relative
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +31,10 @@ class CompileError(RuntimeError):
 
 def load_and_validate(path: Path) -> dict[str, Any]:
     workflow = json.loads(path.read_text(encoding="utf-8"))
+    if workflow.get("skill_roots"):
+        workflow["skill_roots"] = [
+            str(item) for item in expand_config_paths(workflow.get("skill_roots", []))
+        ]
     if workflow.get("schema") != "hutch.cao-workflow.v1":
         raise CompileError("workflow must use hutch.cao-workflow.v1")
     if not NAME_RE.fullmatch(str(workflow.get("name", ""))):
@@ -218,12 +223,10 @@ allowedTools:
 mcpServers:
   cao-mcp-server:
     type: stdio
-    command: uv
+    command: sh
     args:
-      - --directory
-      - {cao_repo}
-      - run
-      - cao-mcp-server
+      - -lc
+      - 'uv --directory "${{CAO_REPO:?set CAO_REPO to your cli-agent-orchestrator checkout}}" run cao-mcp-server'
 ---
 
 # Role
@@ -240,7 +243,7 @@ You are the deterministic supervisor of a CAO-owned Rabbit Hutch flow. CAO creat
 - After each assignment, record the CAO terminal ID and run the exact await command from the flow prompt. A worker's prose response or CAO TUI status is not completion evidence.
 - On validation failure, delete the failed terminal and assign the same task once more with the validation error. Never invent, repair, or silently accept a worker artifact.
 - Stop on the second failure and leave the state and evidence intact for diagnosis.
-- Never modify the original DJL checkout or `shared/target-snapshot/`.
+- Never modify the original target checkout or `shared/target-snapshot/`.
 - Do not delete the CAO session or worker evidence. CAO owns runtime lifecycle.
 """
 
@@ -258,7 +261,7 @@ def render_flow(workflow: dict[str, Any], prepare_script_name: str) -> str:
             profile = f"{name}-{stage['agent']}"
             dependencies = ", ".join(stage.get("depends_on", [])) or "none"
             preflight = (
-                f"`python3 {ROOT / 'scripts' / 'hutch_flow_state.py'} coverage \"[[run_dir]]\" {stage['id']}`"
+                f"`python3 \"$HUTCH_REPO/scripts/hutch_flow_state.py\" coverage \"[[run_dir]]\" {stage['id']}`"
                 if stage.get("coverage_gate")
                 else "none"
             )
@@ -284,6 +287,10 @@ Read these files first:
 - durable state: `[[state_file]]`
 - immutable source snapshot: `[[target_snapshot]]`
 
+Before the first batch, run:
+
+`export HUTCH_REPO="${{HUTCH_REPO:-$(CDPATH= cd -- \"$(dirname -- \"./prepare-run.sh\")/../..\" && pwd)}}"`
+
 Execute these exact dependency batches in order. Concurrency limit: {maximum}.
 
 {stages}
@@ -291,15 +298,15 @@ Execute these exact dependency batches in order. Concurrency limit: {maximum}.
 For every batch:
 
 1. Read every task JSON in the batch and confirm its dependencies are `done` in `[[state_file]]`. Run a preflight only when that stage's explicit `preflight` value is not `none`; never infer or invent a preflight. Stop if an explicit preflight fails.
-2. For every stage in the batch, run `python3 {ROOT / 'scripts' / 'cao_assign_cell.py'} <absolute-task-path>`. This Hutch launcher validates the Agent Cell contract, creates the worker through the CAO API in the current CAO session, forces the exact Cell `working_directory`, and submits the task. Record each returned `terminal_id`; do not await yet. Do not substitute CAO MCP `assign`.
-3. Immediately after each assignment run `python3 {ROOT / 'scripts' / 'hutch_flow_state.py'} start "[[run_dir]]" <stage-id> <terminal-id>`.
-4. After all workers in the batch are running, await each with `python3 {ROOT / 'scripts' / 'hutch_flow_state.py'} await "[[run_dir]]" <stage-id> --timeout {timeout}`. This file gate, not CAO's TUI status, is completion authority.
+2. For every stage in the batch, run `python3 "$HUTCH_REPO/scripts/cao_assign_cell.py" <absolute-task-path>`. This Hutch launcher validates the Agent Cell contract, creates the worker through the CAO API in the current CAO session, forces the exact Cell `working_directory`, and submits the task. Record each returned `terminal_id`; do not await yet. Do not substitute CAO MCP `assign`.
+3. Immediately after each assignment run `python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" start "[[run_dir]]" <stage-id> <terminal-id>`.
+4. After all workers in the batch are running, await each with `python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" await "[[run_dir]]" <stage-id> --timeout {timeout}`. This file gate, not CAO's TUI status, is completion authority.
 5. After successful validation, call CAO MCP `delete_terminal` for that worker terminal.
 6. If await/validation fails, delete the failed terminal, remove only that stage's invalid result file if one exists, and run the same assignment once more after reporting the validator error. Maximum attempts: {max_attempts}. Stop if the final attempt fails.
 
 After all stages validate, run:
 
-`python3 {ROOT / 'scripts' / 'hutch_flow_state.py'} finalize "[[run_dir]]"`
+`python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" finalize "[[run_dir]]"`
 
 Your final response must state the run directory, final state, final report path `[[run_dir]]/{final_artifact}`, and that CAO Web owns the visible flow/session records. Do not substitute your own analysis for any missing worker output.
 """
@@ -322,10 +329,17 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
 
     wrapper_name = "prepare-run.sh"
     wrapper_path = output / wrapper_name
+    workflow_ref = repo_relative(workflow_path)
+    profiles_ref = repo_relative(profiles_dir)
+    workflow_arg = workflow_ref if Path(workflow_ref).is_absolute() else f"$HUTCH_REPO/{workflow_ref}"
+    profiles_arg = profiles_ref if Path(profiles_ref).is_absolute() else f"$HUTCH_REPO/{profiles_ref}"
     wrapper_path.write_text(
         "#!/bin/sh\n"
-        f"exec python3 {ROOT / 'scripts' / 'prepare_native_flow_run.py'} "
-        f"{workflow_path.resolve()} --profiles-dir {profiles_dir.resolve()}\n",
+        "set -eu\n"
+        "SCRIPT_DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n"
+        "HUTCH_REPO=${HUTCH_REPO:-$(CDPATH= cd -- \"$SCRIPT_DIR/../..\" && pwd)}\n"
+        f"exec python3 \"$HUTCH_REPO/scripts/prepare_native_flow_run.py\" "
+        f"\"{workflow_arg}\" --profiles-dir \"{profiles_arg}\"\n",
         encoding="utf-8",
     )
     wrapper_path.chmod(0o755)
@@ -334,10 +348,10 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
     manifest = {
         "schema": "hutch.cao-bundle.v1",
         "workflow": workflow["name"],
-        "source": str(workflow_path.resolve()),
-        "flow": str(flow_path.resolve()),
+        "source": repo_relative(workflow_path),
+        "flow": repo_relative(flow_path),
         "supervisor_profile": f"{workflow['name']}-supervisor",
-        "profiles": [str(path.resolve()) for path in profile_paths],
+        "profiles": [repo_relative(path) for path in profile_paths],
         "register_enabled": bool(workflow.get("execution", {}).get("register_enabled", False)),
     }
     (output / "bundle.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -351,9 +365,14 @@ def run(command: list[str], cwd: Path, *, check: bool = True) -> subprocess.Comp
     return result
 
 
+def manifest_path(value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
+
+
 def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disable: bool) -> None:
     cao = ["uv", "--directory", str(cao_repo), "run", "cao"]
-    workflow = json.loads(Path(manifest["source"]).read_text(encoding="utf-8"))
+    workflow = json.loads(manifest_path(manifest["source"]).read_text(encoding="utf-8"))
     policies = {
         f"{workflow['name']}-supervisor": [("supervisor", [])],
         **{
@@ -364,10 +383,10 @@ def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disa
         },
     }
     for profile in manifest["profiles"]:
-        result = run(cao + ["install", profile, "--provider", "opencode_cli"], cao_repo)
+        profile_path = manifest_path(profile)
+        result = run(cao + ["install", str(profile_path), "--provider", "opencode_cli"], cao_repo)
         if "Error:" in result.stdout:
             raise CompileError(result.stdout.strip())
-        profile_path = Path(profile)
         install_opencode_agent_policy(
             profile_path,
             profile_path.stem,
@@ -376,7 +395,7 @@ def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disa
     name = manifest["workflow"]
     if replace:
         run(cao + ["flow", "remove", name], cao_repo, check=False)
-    run(cao + ["flow", "add", manifest["flow"]], cao_repo)
+    run(cao + ["flow", "add", str(manifest_path(manifest["flow"]))], cao_repo)
     if disable:
         run(cao + ["flow", "disable", name], cao_repo)
 
@@ -393,7 +412,7 @@ def main() -> int:
     try:
         workflow_path = args.workflow.resolve()
         workflow = load_and_validate(workflow_path)
-        cao_repo = (args.cao_repo or Path(workflow["cao_repo"])).resolve()
+        cao_repo = args.cao_repo.resolve() if args.cao_repo else expand_config_path(workflow["cao_repo"])
         output = (args.output or ROOT / "generated" / workflow["name"]).resolve()
         manifest = write_output(workflow_path, workflow, output, cao_repo)
         if args.install:

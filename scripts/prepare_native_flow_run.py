@@ -19,6 +19,7 @@ from run_cao_flow import (
     source_fingerprint,
     task_document,
 )
+from hutch_paths import expand_config_path, expand_config_paths
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,10 @@ def load_workflow(path: Path) -> dict[str, Any]:
     workflow = json.loads(path.read_text(encoding="utf-8"))
     if workflow.get("schema") != "hutch.cao-workflow.v1":
         raise ValueError("workflow must use hutch.cao-workflow.v1")
+    if workflow.get("skill_roots"):
+        workflow["skill_roots"] = [
+            str(item) for item in expand_config_paths(workflow.get("skill_roots", []))
+        ]
     return workflow
 
 
@@ -38,7 +43,7 @@ def unique_run_dir(workflow_name: str) -> Path:
 
 def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, Any]:
     workflow = load_workflow(workflow_path.resolve())
-    target = Path(workflow["target"]).resolve()
+    target = expand_config_path(workflow["target"])
     if not (target / ".git").exists():
         raise ValueError(f"target is not a Git checkout: {target}")
 

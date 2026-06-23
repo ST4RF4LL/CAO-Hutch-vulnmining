@@ -6,10 +6,9 @@ sandbox_mode = "workspace-write"
 network_access = true
 
 [mcp_servers.hutch]
-command = "/Users/wh4lter/Workspace/Qu-Studio/bin/hutch-mcp"
+command = "bin/hutch-mcp"
 startup_timeout_sec = 20
 tool_timeout_sec = 200
 
 [mcp_servers.hutch.env]
 HUTCH_URL = "http://127.0.0.1:9890"
-CAO_REPO = "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator"

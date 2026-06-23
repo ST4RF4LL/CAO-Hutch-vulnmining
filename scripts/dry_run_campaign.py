@@ -27,14 +27,16 @@ from generate_cao_native_flow import (
 )
 from hutch_campaign import mining_workflow, planning_workflow
 from hutch_flow_state import finalize, start_stage, validate_stage
+from hutch_paths import default_cao_repo, default_skill_roots
 from run_cao_flow import create_snapshot, now, source_fingerprint
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CAO_REPO = Path("/Users/wh4lter/Workspace/lab/cli-agent-orchestrator")
-DEFAULT_SKILL_ROOT = Path(
-    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
-)
+try:
+    DEFAULT_CAO_REPO = default_cao_repo()
+except RuntimeError:
+    DEFAULT_CAO_REPO = ROOT.parent / "cli-agent-orchestrator"
+DEFAULT_SKILL_ROOTS = default_skill_roots()
 
 
 class DryRunError(RuntimeError):
@@ -443,7 +445,11 @@ def main() -> int:
     parser.add_argument("target", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--cao-repo", type=Path, default=DEFAULT_CAO_REPO)
-    parser.add_argument("--skill-root", type=Path, default=DEFAULT_SKILL_ROOT)
+    parser.add_argument(
+        "--skill-root",
+        type=Path,
+        default=DEFAULT_SKILL_ROOTS[0] if DEFAULT_SKILL_ROOTS else ROOT / "third_party" / "skills",
+    )
     parser.add_argument("--max-concurrency", type=int, default=8)
     args = parser.parse_args()
     output = args.output or (

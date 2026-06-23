@@ -1,0 +1,91 @@
+{
+  "schema": "hutch.cao-workflow-template.v1",
+  "id": "information-collection",
+  "version": "1.0.0",
+  "name_suffix": "info",
+  "description": "Generic repository information-collection flow.",
+  "workflow": {
+    "description": "Builds complete repository architecture, business-flow, external-interface, and module intelligence.",
+    "schedule": "0 0 1 1 *",
+    "provider": "opencode_cli",
+    "snapshot": {
+      "max_file_bytes": 2097152,
+      "analysis": "structural"
+    },
+    "execution": {
+      "stage_timeout_seconds": 1800,
+      "max_attempts": 2,
+      "max_concurrency": 1,
+      "register_enabled": false
+    },
+    "agents": [
+      {
+        "id": "repository-analyst",
+        "description": "Maps repository modules, runtime components, business flows, and external interfaces.",
+        "mission": "Use the deterministic module inventory as the completeness boundary. Build architecture, component, business-flow, and external-interface intelligence for every module with source paths and symbols. Do not silently prioritize away low-risk modules and do not claim vulnerabilities.",
+        "atlas": true,
+        "skills": [
+          "secure-code-review-common",
+          "audit-artifact-management",
+          "audit-skills"
+        ]
+      }
+    ],
+    "stages": [
+      {
+        "id": "repository-intelligence",
+        "task_id": "I-0001",
+        "agent": "repository-analyst",
+        "depends_on": [],
+        "artifact": "artifacts/intelligence/architecture.md",
+        "required_artifacts": [
+          "artifacts/intelligence/architecture.json",
+          "artifacts/intelligence/business-flows.json",
+          "artifacts/intelligence/external-interfaces.json"
+        ],
+        "inputs": [
+          "shared/source-fingerprint.json",
+          "shared/snapshot-manifest.json",
+          "shared/repository-inventory.json",
+          "shared/modules.json"
+        ],
+        "required_sections": [
+          "Repository Scale and Module Map",
+          "Runtime Architecture",
+          "Business Logic and Data Flows",
+          "External Interfaces",
+          "Security-Relevant Components",
+          "Evidence and Limitations"
+        ],
+        "objective": "Produce complete architecture and business intelligence tied to every deterministic module ID.",
+        "json_contracts": [
+          {
+            "artifact": "artifacts/intelligence/architecture.json",
+            "schema": "hutch.architecture-intelligence.v1",
+            "required_fields": [
+              "modules",
+              "components"
+            ],
+            "module_coverage": true,
+            "module_field": "modules",
+            "inventory": "shared/modules.json"
+          },
+          {
+            "artifact": "artifacts/intelligence/business-flows.json",
+            "schema": "hutch.business-flows.v1",
+            "required_fields": [
+              "flows"
+            ]
+          },
+          {
+            "artifact": "artifacts/intelligence/external-interfaces.json",
+            "schema": "hutch.external-interfaces.v1",
+            "required_fields": [
+              "interfaces"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

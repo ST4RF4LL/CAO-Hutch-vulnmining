@@ -13,12 +13,10 @@ allowedTools:
 mcpServers:
   cao-mcp-server:
     type: stdio
-    command: uv
+    command: sh
     args:
-    - --directory
-    - /Users/wh4lter/Workspace/lab/cli-agent-orchestrator
-    - run
-    - cao-mcp-server
+    - -lc
+    - 'uv --directory "${CAO_REPO:?set CAO_REPO to your cli-agent-orchestrator checkout}" run cao-mcp-server'
 ---
 
 # CAO Adapter Rules

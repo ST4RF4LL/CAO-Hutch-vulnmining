@@ -1,0 +1,84 @@
+{
+  "schema": "hutch.cao-workflow-template.v1",
+  "id": "security-knowledge-threat-model",
+  "version": "1.0.0",
+  "name_suffix": "security-threats",
+  "description": "Security-knowledge threat-modeling flow for a target Git checkout.",
+  "skill_roots": [
+    "$SECKNOWLEDGE_SKILL_ROOT",
+    "$HACK_SKILLS_ROOT",
+    "$HUTCH_REPO/third_party/skills/security-knowledge/secknowledge-skill",
+    "$HUTCH_REPO/third_party/skills/security-knowledge/hack-skills"
+  ],
+  "workflow": {
+    "description": "Builds source-grounded security hypotheses and audit-track plans using secknowledge-skill and hack-skills methodology.",
+    "schedule": "0 0 1 1 *",
+    "provider": "opencode_cli",
+    "snapshot": {
+      "max_file_bytes": 2097152,
+      "analysis": "structural"
+    },
+    "execution": {
+      "stage_timeout_seconds": 1800,
+      "max_attempts": 2,
+      "max_concurrency": 1,
+      "register_enabled": false
+    },
+    "campaign": {
+      "schema": "hutch.campaign.v1",
+      "id": "security-knowledge",
+      "phase": "planning"
+    },
+    "agents": [
+      {
+        "id": "security-router",
+        "description": "Classifies target attack surface and selects bounded security-knowledge tracks.",
+        "mission": "Read repository inventory, module map, and architecture evidence. Classify target type, exposed interfaces, authentication model, AI/agent surfaces, deployment indicators, and likely security-knowledge tracks. Use external skills only as routing methodology; do not claim vulnerabilities.",
+        "atlas": true,
+        "skills": ["hack", "secknowledge-skill", "recon-and-methodology", "recon-for-sec", "api-sec", "auth-sec", "injection-checking", "ai-ml-security"]
+      },
+      {
+        "id": "security-validator",
+        "description": "Validates threat-model quality and audit-track completeness.",
+        "mission": "Check that every threat hypothesis is tied to source evidence, target classification, a specific audit track, and explicit missing runtime assumptions. Reject generic checklist-only plans.",
+        "atlas": false,
+        "skills": ["hack", "secknowledge-skill", "recon-and-methodology"]
+      }
+    ],
+    "stages": [
+      {
+        "id": "threat-model",
+        "task_id": "SKT-0001",
+        "agent": "security-router",
+        "depends_on": [],
+        "artifact": "artifacts/security-knowledge/00-threat-model.md",
+        "required_artifacts": ["artifacts/security-knowledge/threat-model.json", "artifacts/security-knowledge/audit-track-plan.json"],
+        "inputs": ["shared/source-fingerprint.json", "shared/repository-inventory.json", "shared/modules.json"],
+        "required_sections": ["Assets and Trust Boundaries", "Threat Hypotheses", "Audit Track Plan", "Skill and Reference Mapping", "Evidence and Limitations"],
+        "objective": "Produce security-knowledge threat hypotheses and an audit-track plan covering selected Web/API/Auth/Injection/File/AI/Infra domains.",
+        "json_contracts": [
+          {
+            "artifact": "artifacts/security-knowledge/threat-model.json",
+            "schema": "hutch.security-knowledge-threat-model.v1",
+            "required_fields": ["threats", "assumptions"]
+          },
+          {
+            "artifact": "artifacts/security-knowledge/audit-track-plan.json",
+            "schema": "hutch.security-knowledge-track-plan.v1",
+            "required_fields": ["tracks"]
+          }
+        ]
+      },
+      {
+        "id": "track-plan-validation",
+        "task_id": "SKT-0002",
+        "agent": "security-validator",
+        "depends_on": ["threat-model"],
+        "artifact": "artifacts/security-knowledge/01-track-plan-validation.md",
+        "inputs": ["shared/modules.json", "artifacts/security-knowledge/00-threat-model.md", "artifacts/security-knowledge/threat-model.json", "artifacts/security-knowledge/audit-track-plan.json"],
+        "required_sections": ["Validation Method", "Coverage Decision", "Rejected Generic Checks", "Residual Gaps", "Evidence and Limitations"],
+        "objective": "Validate that the threat model and track plan are source-grounded and ready for vulnerability-mining flows."
+      }
+    ]
+  }
+}

@@ -14,14 +14,14 @@ from hutch_cli import HutchCliError, HutchClient
 from adaptive_audit import atomic_json, load_json
 from generate_cao_native_flow import install_bundle, load_and_validate, write_output
 from hutch_campaign import DEFAULT_SKILL_ROOTS, mining_workflow, planning_workflow, recon_workflow
+from hutch_paths import default_cao_repo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CAO_REPO = Path(
-    os.environ.get(
-        "CAO_REPO", "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator"
-    )
-).expanduser().resolve()
+try:
+    DEFAULT_CAO_REPO = default_cao_repo()
+except RuntimeError:
+    DEFAULT_CAO_REPO = ROOT.parent / "cli-agent-orchestrator"
 DEFAULT_MCP_SKILL_ROOTS = (
     [Path(os.environ["HUTCH_SKILL_ROOT"]).expanduser().resolve()]
     if os.environ.get("HUTCH_SKILL_ROOT")

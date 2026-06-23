@@ -1,0 +1,80 @@
+{
+  "schema": "hutch.cao-workflow-template.v1",
+  "id": "security-knowledge-recon",
+  "version": "1.0.0",
+  "name_suffix": "security-recon",
+  "description": "Security-knowledge information collection flow for a target Git checkout.",
+  "skill_roots": [
+    "$SECKNOWLEDGE_SKILL_ROOT",
+    "$HACK_SKILLS_ROOT",
+    "$HUTCH_REPO/third_party/skills/security-knowledge/secknowledge-skill",
+    "$HUTCH_REPO/third_party/skills/security-knowledge/hack-skills"
+  ],
+  "workflow": {
+    "description": "Collects target classification, attack surface, and security-knowledge routing intelligence.",
+    "schedule": "0 0 1 1 *",
+    "provider": "opencode_cli",
+    "snapshot": {
+      "max_file_bytes": 2097152,
+      "analysis": "structural"
+    },
+    "execution": {
+      "stage_timeout_seconds": 1800,
+      "max_attempts": 2,
+      "max_concurrency": 1,
+      "register_enabled": false
+    },
+    "campaign": {
+      "schema": "hutch.campaign.v1",
+      "id": "security-knowledge",
+      "phase": "recon"
+    },
+    "agents": [
+      {
+        "id": "security-router",
+        "description": "Classifies target attack surface and selects bounded security-knowledge tracks.",
+        "mission": "Read repository inventory, module map, and architecture evidence. Classify target type, exposed interfaces, authentication model, AI/agent surfaces, deployment indicators, and likely security-knowledge tracks. Use external skills only as routing methodology; do not claim vulnerabilities.",
+        "atlas": true,
+        "skills": ["hack", "secknowledge-skill", "recon-and-methodology", "recon-for-sec", "api-sec", "auth-sec", "injection-checking", "ai-ml-security"]
+      }
+    ],
+    "stages": [
+      {
+        "id": "target-classification",
+        "task_id": "SKR-0001",
+        "agent": "security-router",
+        "depends_on": [],
+        "artifact": "artifacts/security-knowledge/00-target-classification.md",
+        "required_artifacts": ["artifacts/security-knowledge/target-classification.json"],
+        "inputs": ["shared/source-fingerprint.json", "shared/snapshot-manifest.json", "shared/repository-inventory.json", "shared/modules.json"],
+        "required_sections": ["Target Type and Attack Surface", "Skill Routing Matrix", "Track Selection", "Evidence and Limitations"],
+        "objective": "Classify target security domains and produce a machine-readable security-knowledge routing matrix.",
+        "json_contracts": [
+          {
+            "artifact": "artifacts/security-knowledge/target-classification.json",
+            "schema": "hutch.security-knowledge-classification.v1",
+            "required_fields": ["target_types", "selected_tracks", "module_hints"]
+          }
+        ]
+      },
+      {
+        "id": "security-map",
+        "task_id": "SKR-0002",
+        "agent": "security-router",
+        "depends_on": ["target-classification"],
+        "artifact": "artifacts/security-knowledge/01-security-map.md",
+        "required_artifacts": ["artifacts/security-knowledge/security-map.json"],
+        "inputs": ["shared/modules.json", "artifacts/security-knowledge/00-target-classification.md", "artifacts/security-knowledge/target-classification.json"],
+        "required_sections": ["Entry Points", "Trust Boundaries", "High-Risk Components", "Skill Coverage Plan", "Evidence and Limitations"],
+        "objective": "Build source-grounded attack-surface and skill-coverage intelligence for downstream threat modeling.",
+        "json_contracts": [
+          {
+            "artifact": "artifacts/security-knowledge/security-map.json",
+            "schema": "hutch.security-knowledge-map.v1",
+            "required_fields": ["entry_points", "trust_boundaries", "track_plan"]
+          }
+        ]
+      }
+    ]
+  }
+}

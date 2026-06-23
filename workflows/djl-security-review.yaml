@@ -3,9 +3,9 @@
   "name": "djl-security-review",
   "version": "0.1.0",
   "provider": "opencode_cli",
-  "target": "/Users/wh4lter/Workspace/pentest_gym/djl_test/djl",
+  "target": "../pentest_gym/djl_test/djl",
   "skill_roots": [
-    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
+    "../opencode_multi_agents/.opencode/skills"
   ],
   "snapshot": {
     "analysis": "full",

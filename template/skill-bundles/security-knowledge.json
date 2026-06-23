@@ -1,0 +1,109 @@
+{
+  "schema": "hutch.skill-bundle.v1",
+  "id": "security-knowledge",
+  "version": "1.0.0",
+  "description": "Skill grouping for defensive source-audit workflows based on secknowledge-skill and hack-skills.",
+  "sources": [
+    {
+      "id": "secknowledge-skill",
+      "url": "https://github.com/Pa55w0rd/secknowledge-skill",
+      "observed_commit": "078de3baa6b325f5acc5338c62169532e8f922b4",
+      "layout": "root SKILL.md plus references/",
+      "license_status": "No LICENSE or NOTICE file was present in the inspected checkout; do not vendor or redistribute automatically."
+    },
+    {
+      "id": "hack-skills",
+      "url": "https://github.com/yaklang/hack-skills",
+      "observed_commit": "c9a4b9ee8645eb60763eb4eef172f1ecb0a5b3e8",
+      "layout": "skills/*/SKILL.md",
+      "license_status": "MIT license file present in the inspected checkout."
+    }
+  ],
+  "recommended_roots": [
+    "$SECKNOWLEDGE_SKILL_ROOT",
+    "$HACK_SKILLS_ROOT"
+  ],
+  "bundles": {
+    "router": [
+      "hack",
+      "secknowledge-skill",
+      "recon-and-methodology",
+      "recon-for-sec",
+      "api-sec",
+      "auth-sec",
+      "injection-checking",
+      "ai-ml-security"
+    ],
+    "web_api_auth": [
+      "hack",
+      "secknowledge-skill",
+      "api-sec",
+      "api-recon-and-docs",
+      "api-auth-and-jwt-abuse",
+      "api-authorization-and-bola",
+      "auth-sec",
+      "authbypass-authentication-flaws",
+      "idor-broken-object-authorization",
+      "jwt-oauth-token-attacks",
+      "oauth-oidc-misconfiguration",
+      "business-logic-vulnerabilities"
+    ],
+    "injection": [
+      "hack",
+      "secknowledge-skill",
+      "injection-checking",
+      "sqli-sql-injection",
+      "xss-cross-site-scripting",
+      "cmdi-command-injection",
+      "ssti-server-side-template-injection",
+      "deserialization-insecure",
+      "xxe-xml-external-entity",
+      "nosql-injection",
+      "jndi-injection",
+      "expression-language-injection"
+    ],
+    "file_ssrf_protocol": [
+      "hack",
+      "secknowledge-skill",
+      "file-access-vuln",
+      "upload-insecure-files",
+      "path-traversal-lfi",
+      "ssrf-server-side-request-forgery",
+      "request-smuggling",
+      "http-host-header-attacks",
+      "websocket-security",
+      "cors-cross-origin-misconfiguration",
+      "csrf-cross-site-request-forgery"
+    ],
+    "ai_agent": [
+      "secknowledge-skill",
+      "ai-ml-security",
+      "llm-prompt-injection",
+      "sandbox-escape-techniques"
+    ],
+    "infra_supplychain": [
+      "hack",
+      "secknowledge-skill",
+      "insecure-source-code-management",
+      "dependency-confusion",
+      "container-escape-techniques",
+      "kubernetes-pentesting",
+      "unauthorized-access-common-services",
+      "subdomain-takeover",
+      "waf-bypass-techniques"
+    ],
+    "validator": [
+      "hack",
+      "secknowledge-skill",
+      "recon-and-methodology"
+    ]
+  },
+  "policy": {
+    "default_tools": [
+      "fs_read",
+      "fs_list"
+    ],
+    "runtime_escalations": "Do not grant shell, write, network, or supervisor authority from these external skills. Use them as read-only methodology and checklist sources inside Hutch Agent Cells.",
+    "payload_policy": "Payloads and exploitation notes are only audit hypotheses unless the target is explicitly authorized and Hutch evidence contracts prove reachability, controllability, missing controls, and impact."
+  }
+}

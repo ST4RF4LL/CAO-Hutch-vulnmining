@@ -5,10 +5,10 @@
   "description": "Builds complete repository intelligence before any vulnerability-mining tasks are planned.",
   "schedule": "0 0 1 1 *",
   "provider": "opencode_cli",
-  "target": "/Users/wh4lter/Workspace/pentest_gym/djl_test/djl",
-  "cao_repo": "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator",
+  "target": "../pentest_gym/djl_test/djl",
+  "cao_repo": "../lab/cli-agent-orchestrator",
   "skill_roots": [
-    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
+    "../opencode_multi_agents/.opencode/skills"
   ],
   "snapshot": {
     "max_file_bytes": 2097152

@@ -1,19 +1,21 @@
 import json
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAO_REPO = Path("/Users/wh4lter/Workspace/lab/cli-agent-orchestrator")
+CAO_REPO = Path(os.environ.get("CAO_REPO", ROOT.parent / "cli-agent-orchestrator")).expanduser().resolve()
 SCRIPT = ROOT / "scripts" / "import_external_agents.py"
 
 
 class ExternalAgentImportTests(unittest.TestCase):
     def run_importer(self, *arguments):
-        result = subprocess.run(
-            [
+        if (CAO_REPO / "pyproject.toml").is_file():
+            command = [
                 "uv",
                 "run",
                 "--directory",
@@ -21,7 +23,11 @@ class ExternalAgentImportTests(unittest.TestCase):
                 "python",
                 str(SCRIPT),
                 *map(str, arguments),
-            ],
+            ]
+        else:
+            command = [sys.executable, str(SCRIPT), *map(str, arguments)]
+        result = subprocess.run(
+            command,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -29,6 +35,7 @@ class ExternalAgentImportTests(unittest.TestCase):
         )
         return result
 
+    @unittest.skipUnless((CAO_REPO / "pyproject.toml").is_file(), "CAO_REPO is not configured")
     def test_imports_agent_and_skill_with_fail_closed_permissions(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

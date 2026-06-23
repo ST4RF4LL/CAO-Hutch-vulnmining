@@ -26,7 +26,7 @@ The static-analysis pipeline is:
 6. independent candidate validation and deduplication;
 7. final evidence-linked report.
 
-Audit workers use an immutable text/source snapshot of `/Users/wh4lter/Workspace/djl_test/djl`. They cannot use the network, run builds/tests, execute DJL, or write to the target. Finalization compares the target Git fingerprint with the pre-run fingerprint.
+Audit workers use an immutable text/source snapshot of the configured target repository. They cannot use the network, run builds/tests, execute the target, or write to the target. Finalization compares the target Git fingerprint with the pre-run fingerprint.
 
 ## Generate and register
 
@@ -45,7 +45,7 @@ Open CAO Web at `http://127.0.0.1:9889`, choose **Flows**, and locate `djl-vulne
 Equivalent CLI command:
 
 ```bash
-uv --directory /Users/wh4lter/Workspace/lab/cli-agent-orchestrator \
+uv --directory "$CAO_REPO" \
   run cao flow run djl-vulnerability-mining
 ```
 

@@ -5,12 +5,11 @@
     "hutch": {
       "type": "local",
       "command": [
-        "/Users/wh4lter/Workspace/Qu-Studio/bin/hutch-mcp"
+        "bin/hutch-mcp"
       ],
       "enabled": true,
       "environment": {
-        "HUTCH_URL": "http://127.0.0.1:9890",
-        "CAO_REPO": "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator"
+        "HUTCH_URL": "http://127.0.0.1:9890"
       }
     }
   },

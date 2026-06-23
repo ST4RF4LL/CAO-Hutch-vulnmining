@@ -7,5 +7,9 @@ validation/*/.opencode/package.json
 validation/*/.opencode/package-lock.json
 runs/
 dry-runs/
+generated/
+hutch-projects.json
+workflows/*.generated.yaml
+workflows/*.generated.json
 __pycache__/
 *.pyc

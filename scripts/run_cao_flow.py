@@ -36,10 +36,14 @@ from agent_cells import (
     prepare_agent_cells,
     validate_cell_specs,
 )
+from hutch_paths import default_cao_repo, expand_config_path, expand_config_paths
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CAO_REPO = Path("/Users/wh4lter/Workspace/lab/cli-agent-orchestrator")
+try:
+    DEFAULT_CAO_REPO = default_cao_repo()
+except RuntimeError:
+    DEFAULT_CAO_REPO = ROOT.parent / "cli-agent-orchestrator"
 SKIP_DIRS = {
     ".atlas",
     ".git",
@@ -251,6 +255,10 @@ def load_workflow(path: Path) -> dict[str, Any]:
         raise FlowError(f"invalid JSON-compatible workflow {path}: {error}") from error
     if workflow.get("schema") != "hutch.workflow.v1" or not workflow.get("stages"):
         raise FlowError("workflow must use hutch.workflow.v1 and define stages")
+    if workflow.get("skill_roots"):
+        workflow["skill_roots"] = [
+            str(item) for item in expand_config_paths(workflow.get("skill_roots", []))
+        ]
     stage_ids = [stage["id"] for stage in workflow["stages"]]
     if len(stage_ids) != len(set(stage_ids)):
         raise FlowError("stage ids must be unique")
@@ -812,7 +820,7 @@ def main() -> int:
 
     workflow_path = args.workflow.resolve()
     workflow = load_workflow(workflow_path)
-    target = (args.target or Path(workflow["target"])).resolve()
+    target = args.target.resolve() if args.target else expand_config_path(workflow["target"])
     if not (target / ".git").exists():
         raise FlowError(f"target is not a Git checkout: {target}")
     run_dir = args.runs_dir.resolve() / args.run_id

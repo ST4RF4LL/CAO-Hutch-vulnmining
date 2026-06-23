@@ -18,15 +18,16 @@ from adaptive_audit import (
     validate_audit_plan,
 )
 from agent_cells import AgentCellError, discover_skills
+from hutch_paths import default_cao_repo, default_skill_roots
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CAO_REPO = Path("/Users/wh4lter/Workspace/lab/cli-agent-orchestrator")
-DEFAULT_SKILL_ROOT = Path(
-    "/Users/wh4lter/Workspace/opencode_multi_agents/.opencode/skills"
-)
 BUNDLED_SKILL_ROOT = ROOT / "third_party" / "skills"
-DEFAULT_SKILL_ROOTS = [DEFAULT_SKILL_ROOT, BUNDLED_SKILL_ROOT]
+try:
+    DEFAULT_CAO_REPO = default_cao_repo()
+except RuntimeError:
+    DEFAULT_CAO_REPO = ROOT.parent / "cli-agent-orchestrator"
+DEFAULT_SKILL_ROOTS = default_skill_roots()
 
 
 class CampaignError(RuntimeError):
@@ -373,7 +374,7 @@ def main() -> int:
         )
     args = parser.parse_args()
     try:
-        roots = args.skill_root or [DEFAULT_SKILL_ROOT]
+        roots = args.skill_root or DEFAULT_SKILL_ROOTS
         if args.command == "recon":
             workflow = recon_workflow(
                 args.target,

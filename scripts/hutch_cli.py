@@ -14,10 +14,14 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import Any
+from hutch_paths import default_cao_repo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CAO_REPO = Path("/Users/wh4lter/Workspace/lab/cli-agent-orchestrator")
+try:
+    DEFAULT_CAO_REPO = default_cao_repo()
+except RuntimeError:
+    DEFAULT_CAO_REPO = ROOT.parent / "cli-agent-orchestrator"
 
 
 class HutchCliError(RuntimeError):
@@ -145,6 +149,76 @@ def flow_compile(args: argparse.Namespace, _: HutchClient) -> Any:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
         return {"ok": True, "output": result.stdout.strip()}
+
+
+def flow_from_template(args: argparse.Namespace, client: HutchClient) -> Any:
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "hutch_template.py"),
+        "render",
+        str(Path(args.target).expanduser()),
+        "--template",
+        args.template,
+        "--cao-repo",
+        str(Path(args.cao_repo).expanduser().resolve()),
+    ]
+    if args.name:
+        command.extend(["--name", args.name])
+    if args.output:
+        command.extend(["--output", str(Path(args.output).expanduser().resolve())])
+    for skill_root in args.skill_root:
+        command.extend(["--skill-root", str(Path(skill_root).expanduser().resolve())])
+    if args.strict_skills:
+        command.append("--strict-skills")
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode:
+        raise HutchCliError(result.stdout.strip() or "workflow template render failed")
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise HutchCliError(f"template renderer returned invalid JSON: {result.stdout}") from error
+    should_compile = args.compile or args.install or args.replace or args.enable
+    if should_compile:
+        value["bundle"] = flow_compile(
+            argparse.Namespace(
+                workflow=str(ROOT / value["workflow"]),
+                output=args.compile_output,
+                cao_repo=args.cao_repo,
+                install=args.install,
+                replace=args.replace,
+                enable=args.enable,
+            ),
+            client,
+        )
+    return value
+
+
+def flow_templates(_: argparse.Namespace, __: HutchClient) -> Any:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "hutch_template.py"),
+            "list",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode:
+        raise HutchCliError(result.stdout.strip() or "workflow template list failed")
+    try:
+        return json.loads(result.stdout).get("templates", [])
+    except json.JSONDecodeError as error:
+        raise HutchCliError(f"template lister returned invalid JSON: {result.stdout}") from error
 
 
 def agent_list(_: argparse.Namespace, client: HutchClient) -> Any:
@@ -283,6 +357,8 @@ def build_parser() -> argparse.ArgumentParser:
     command.set_defaults(handler=flow_info)
     command = flow_commands.add_parser("catalog", help="list CAO flow definitions")
     command.set_defaults(handler=flow_catalog)
+    command = flow_commands.add_parser("templates", help="list generic workflow templates")
+    command.set_defaults(handler=flow_templates)
     for action in ("start", "enable", "disable"):
         command = flow_commands.add_parser(action)
         command.add_argument("flow_name")
@@ -298,6 +374,23 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--replace", action="store_true")
     command.add_argument("--enable", action="store_true")
     command.set_defaults(handler=flow_compile)
+    command = flow_commands.add_parser(
+        "from-template",
+        help="render a generic workflow template for one target Git checkout",
+    )
+    command.add_argument("target")
+    command.add_argument("--template", default="one-run")
+    command.add_argument("--name")
+    command.add_argument("--output")
+    command.add_argument("--cao-repo", default=str(DEFAULT_CAO_REPO))
+    command.add_argument("--skill-root", action="append", default=[])
+    command.add_argument("--strict-skills", action="store_true")
+    command.add_argument("--compile", action="store_true")
+    command.add_argument("--compile-output")
+    command.add_argument("--install", action="store_true")
+    command.add_argument("--replace", action="store_true")
+    command.add_argument("--enable", action="store_true")
+    command.set_defaults(handler=flow_from_template)
 
     agent = groups.add_parser("agent", help="inspect and customize agent profiles")
     agent_commands = agent.add_subparsers(dest="command", required=True)

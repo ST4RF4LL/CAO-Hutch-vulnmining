@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAO_REPO = Path(
-    os.environ.get(
-        "CAO_REPO", "/Users/wh4lter/Workspace/lab/cli-agent-orchestrator"
-    )
-).expanduser().resolve()
+sys.path.insert(0, str(ROOT / "scripts"))
+from hutch_paths import default_cao_repo  # noqa: E402
+
+try:
+    CAO_REPO = default_cao_repo()
+except RuntimeError as error:
+    raise SystemExit(f"hutch-mcp: {error}") from error
 uv = shutil.which("uv")
 if not uv:
     raise SystemExit("hutch-mcp: uv is not installed")

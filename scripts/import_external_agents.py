@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import hashlib
 import json
@@ -12,8 +13,6 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 
 PROFILE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -50,13 +49,47 @@ def load_toml(path: Path) -> dict[str, Any]:
         try:
             import tomli as tomllib  # type: ignore[import-not-found,no-redef]
         except ModuleNotFoundError as error:
-            raise ValueError(
-                "Codex TOML import requires Python 3.11+ or tomli"
-            ) from error
+            return load_simple_toml(path)
     with path.open("rb") as stream:
         value = tomllib.load(stream)
     if not isinstance(value, dict):
         raise ValueError(f"TOML agent must contain a table: {path}")
+    return value
+
+
+def load_simple_toml(path: Path) -> dict[str, Any]:
+    """Fallback parser for dependency-free Codex agent imports.
+
+    It intentionally supports only top-level scalar assignments, which covers
+    the fields Hutch consumes from Codex agent files.
+    """
+    value: dict[str, Any] = {}
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("["):
+            raise ValueError(
+                f"Codex TOML import requires Python 3.11+ or tomli for tables: {path}:{line_number}"
+            )
+        if "=" not in line:
+            raise ValueError(f"invalid TOML assignment: {path}:{line_number}")
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        raw_value = raw_value.strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", key):
+            raise ValueError(f"unsupported TOML key syntax: {path}:{line_number}")
+        if raw_value in {"true", "false"}:
+            value[key] = raw_value == "true"
+            continue
+        try:
+            value[key] = ast.literal_eval(raw_value)
+        except (SyntaxError, ValueError) as error:
+            raise ValueError(
+                f"unsupported TOML scalar value: {path}:{line_number}"
+            ) from error
     return value
 
 
@@ -68,7 +101,14 @@ def markdown_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
         _, raw, body = text.split("---", 2)
     except ValueError as error:
         raise ValueError(f"unterminated YAML frontmatter: {path}") from error
-    metadata = yaml.safe_load(raw) or {}
+    try:
+        import yaml
+    except ModuleNotFoundError as error:
+        raise ValueError("YAML frontmatter import requires PyYAML") from error
+    try:
+        metadata = yaml.safe_load(raw) or {}
+    except yaml.YAMLError as error:
+        raise ValueError(f"invalid YAML frontmatter: {path}: {error}") from error
     if not isinstance(metadata, dict):
         raise ValueError(f"frontmatter must be an object: {path}")
     return metadata, body.strip()
@@ -180,8 +220,11 @@ def cao_mcp(cao_repo: Path) -> dict[str, Any]:
     return {
         "cao-mcp-server": {
             "type": "stdio",
-            "command": "uv",
-            "args": ["--directory", str(cao_repo.resolve()), "run", "cao-mcp-server"],
+            "command": "sh",
+            "args": [
+                "-lc",
+                'uv --directory "${CAO_REPO:?set CAO_REPO to your cli-agent-orchestrator checkout}" run cao-mcp-server',
+            ],
         }
     }
 
@@ -393,7 +436,7 @@ def main() -> int:
     try:
         print(json.dumps(import_external(args), indent=2, ensure_ascii=False))
         return 0
-    except (OSError, ValueError, yaml.YAMLError) as error:
+    except (OSError, ValueError) as error:
         print(f"external agent import failed: {error}")
         return 2
 

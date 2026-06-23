@@ -1,0 +1,133 @@
+{
+  "schema": "hutch.agent-profile-template.v1",
+  "id": "security-knowledge",
+  "version": "1.0.0",
+  "description": "Least-privilege Agent role templates for secknowledge-skill and hack-skills based source-audit flows.",
+  "profiles": [
+    {
+      "id": "security-router",
+      "description": "Classifies target attack surface and selects bounded security-knowledge tracks.",
+      "mission": "Read repository inventory, module map, and architecture evidence. Classify target type, exposed interfaces, authentication model, AI/agent surfaces, deployment indicators, and likely security-knowledge tracks. Use external skills only as routing methodology; do not claim vulnerabilities.",
+      "atlas": true,
+      "skills": [
+        "hack",
+        "secknowledge-skill",
+        "recon-and-methodology",
+        "recon-for-sec",
+        "api-sec",
+        "auth-sec",
+        "injection-checking",
+        "ai-ml-security"
+      ]
+    },
+    {
+      "id": "web-api-auth-auditor",
+      "description": "Audits Web/API authentication, authorization, identity, and business-logic controls.",
+      "mission": "Audit route/API/controller/RPC surfaces for authentication bypass, broken object/function authorization, JWT/OAuth/OIDC flaws, session issues, privilege boundaries, business-logic abuse, and multi-tenant isolation. Produce only source-evidenced candidate findings.",
+      "atlas": true,
+      "skills": [
+        "hack",
+        "secknowledge-skill",
+        "api-sec",
+        "api-recon-and-docs",
+        "api-auth-and-jwt-abuse",
+        "api-authorization-and-bola",
+        "auth-sec",
+        "authbypass-authentication-flaws",
+        "idor-broken-object-authorization",
+        "jwt-oauth-token-attacks",
+        "oauth-oidc-misconfiguration",
+        "business-logic-vulnerabilities"
+      ]
+    },
+    {
+      "id": "injection-auditor",
+      "description": "Audits injection, deserialization, template, XML, and code-execution sinks.",
+      "mission": "Trace attacker-controlled input into SQL/NoSQL, command, expression, template, JNDI, deserialization, XML/XXE, XSS, and code execution sinks. Require source-to-sink reachability and missing or bypassable guards before reporting candidates.",
+      "atlas": true,
+      "skills": [
+        "hack",
+        "secknowledge-skill",
+        "injection-checking",
+        "sqli-sql-injection",
+        "xss-cross-site-scripting",
+        "cmdi-command-injection",
+        "ssti-server-side-template-injection",
+        "deserialization-insecure",
+        "xxe-xml-external-entity",
+        "nosql-injection",
+        "jndi-injection",
+        "expression-language-injection"
+      ]
+    },
+    {
+      "id": "file-ssrf-auditor",
+      "description": "Audits file, upload, SSRF, protocol, browser boundary, and request parsing risks.",
+      "mission": "Audit file upload/download, archive extraction, path construction, URL fetchers, SSRF filters, protocol handling, request smuggling, host header trust, CORS/CSRF, and WebSocket boundaries using local source evidence only.",
+      "atlas": true,
+      "skills": [
+        "hack",
+        "secknowledge-skill",
+        "file-access-vuln",
+        "upload-insecure-files",
+        "path-traversal-lfi",
+        "ssrf-server-side-request-forgery",
+        "request-smuggling",
+        "http-host-header-attacks",
+        "websocket-security",
+        "cors-cross-origin-misconfiguration",
+        "csrf-cross-site-request-forgery"
+      ]
+    },
+    {
+      "id": "ai-agent-auditor",
+      "description": "Audits AI, LLM, RAG, MCP, agent, and sandbox security surfaces.",
+      "mission": "Audit LLM prompt injection, indirect prompt injection, RAG/data poisoning, agent tool overreach, MCP configuration trust, memory/context leakage, model/data handling, and sandbox or container isolation risks. Separate source evidence from deployment assumptions.",
+      "atlas": true,
+      "skills": [
+        "secknowledge-skill",
+        "ai-ml-security",
+        "llm-prompt-injection",
+        "sandbox-escape-techniques"
+      ]
+    },
+    {
+      "id": "infra-supply-auditor",
+      "description": "Audits source management, dependency confusion, deployment, container, and exposure risks.",
+      "mission": "Audit repository exposure, dependency and package namespace trust, build/release scripts, container/Kubernetes deployment indicators, unauthenticated services, subdomain takeover leads, WAF bypass-sensitive assumptions, and hardening gaps using local evidence.",
+      "atlas": false,
+      "skills": [
+        "hack",
+        "secknowledge-skill",
+        "insecure-source-code-management",
+        "dependency-confusion",
+        "container-escape-techniques",
+        "kubernetes-pentesting",
+        "unauthorized-access-common-services",
+        "subdomain-takeover",
+        "waf-bypass-techniques"
+      ]
+    },
+    {
+      "id": "security-validator",
+      "description": "Validates and deduplicates security-knowledge candidate findings.",
+      "mission": "Re-read cited source paths, challenge attacker control, reachability, missing controls, impact, and authorization assumptions. Treat payloads and external references as methodology, not proof. Classify findings as confirmed, likely, needs-info, or false-positive.",
+      "atlas": true,
+      "skills": [
+        "hack",
+        "secknowledge-skill",
+        "recon-and-methodology"
+      ]
+    },
+    {
+      "id": "security-report-writer",
+      "description": "Writes the final security-knowledge audit report from validated evidence.",
+      "mission": "Synthesize classification, threat model, validated findings, rejected candidates, coverage gaps, and referenced methodology into a final report. Only confirmed and likely findings may be reported as vulnerabilities.",
+      "atlas": false,
+      "skills": [
+        "hack",
+        "secknowledge-skill"
+      ]
+    }
+  ]
+}
