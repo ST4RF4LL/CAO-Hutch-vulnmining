@@ -10,11 +10,13 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
+from hutch_paths import hutch_runs_dir
+
 
 CELL_LINKS = ("artifacts", "inbox", "outbox", "shared", "tmp")
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 OPENCODE_AGENTS_DIR = Path.home() / ".aws" / "opencode" / "agents"
-HUTCH_RUNS_GLOB = f"{(Path(__file__).resolve().parent.parent / 'runs').resolve()}/**"
+HUTCH_RUNS_GLOB = f"{hutch_runs_dir().resolve()}/**"
 
 
 class AgentCellError(RuntimeError):

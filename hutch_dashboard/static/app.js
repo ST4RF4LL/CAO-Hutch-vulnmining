@@ -1226,7 +1226,7 @@ function renderProjectDetail(project) {
   detail.append(stats);
 
   if (!project.configured) {
-    detail.append(node("div", "project-notice", "该项目来自历史单仓库 Flow。配置 hutch-projects.json 后可归入应用、域和微服务层级。"));
+    detail.append(node("div", "project-notice", "该项目来自历史单仓库 Flow。配置 ~/.hutch/projects/projects.json 后可归入应用、域和微服务层级。"));
   }
   if (!project.tree?.children?.length) {
     detail.append(node("div", "empty-state", "项目目录树中尚未发现 Git 微服务仓库。"));

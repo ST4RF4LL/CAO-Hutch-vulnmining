@@ -19,6 +19,8 @@ from hutch_paths import (
     default_skill_roots,
     expand_config_path,
     expand_config_paths,
+    hutch_workflows_dir,
+    repo_relative,
 )
 
 
@@ -165,7 +167,7 @@ def instantiate_template(
 
 
 def default_output_for(workflow: dict[str, Any]) -> Path:
-    return ROOT / "workflows" / f"{workflow['name']}.generated.json"
+    return hutch_workflows_dir() / f"{workflow['name']}.generated.json"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -205,8 +207,8 @@ def main() -> int:
                 {
                     "ok": True,
                     "template": args.template,
-                    "template_path": config_relative(source),
-                    "workflow": config_relative(output),
+                    "template_path": repo_relative(source),
+                    "workflow": repo_relative(output),
                     "name": workflow["name"],
                     "target": workflow["target"],
                     "removed_optional_skills": removed,

@@ -11,7 +11,7 @@ Each Git repository is a microservice leaf, so discovery stops at that repositor
 boundary. Hidden directories, symlinks, and common generated dependency directories
 are skipped.
 
-The dashboard reads `hutch-projects.json` by default:
+The dashboard reads `~/.hutch/projects/projects.json` by default:
 
 ```json
 {
@@ -42,8 +42,8 @@ configured root remain visible as backward-compatible standalone repository proj
 The project overview and flow detail page can delete finished Hutch run records.
 Deletion does not remove the registered CAO flow definition. Only runs in `launching`
 or `running` state are protected; prepared records have not started CAO execution and
-can be removed. A deleted run directory is
-moved to `runs/.trash/<run-id>-<timestamp>` so an operator can restore it manually.
+can be removed. A deleted run directory is moved to
+`~/.hutch/runs/.trash/<run-id>-<timestamp>` so an operator can restore it manually.
 
 For every dashboard request, Hutch reconciles `launching` and `running` records with
 CAO's live session list. If the recorded CAO session no longer exists, the effective

@@ -58,6 +58,45 @@ def default_cao_repo() -> Path:
     )
 
 
+def hutch_home() -> Path:
+    """Return Hutch's mutable runtime root.
+
+    The repository stores source workflows, templates, and code. Files that may
+    change during normal operation live below ``~/.hutch`` by default so they do
+    not dirty or accidentally enter the Git checkout. Operators can override the
+    root with ``HUTCH_HOME``.
+    """
+    value = os.environ.get("HUTCH_HOME")
+    if value:
+        return expand_config_path(value)
+    return (Path.home() / ".hutch").resolve()
+
+
+def hutch_runtime_dir(name: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name):
+        raise ValueError(f"invalid Hutch runtime directory name: {name!r}")
+    return hutch_home() / name
+
+
+def hutch_runs_dir() -> Path:
+    return hutch_runtime_dir("runs")
+
+
+def hutch_generated_dir() -> Path:
+    return hutch_runtime_dir("generated")
+
+
+def hutch_workflows_dir() -> Path:
+    return hutch_runtime_dir("workflows")
+
+
+def hutch_projects_file() -> Path:
+    value = os.environ.get("HUTCH_PROJECTS_FILE")
+    if value:
+        return expand_config_path(value)
+    return hutch_runtime_dir("projects") / "projects.json"
+
+
 def default_skill_roots() -> list[Path]:
     configured = os.environ.get("HUTCH_SKILL_ROOTS") or os.environ.get("HUTCH_SKILL_ROOT")
     roots = expand_config_paths([configured]) if configured else []

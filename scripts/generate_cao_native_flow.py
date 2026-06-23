@@ -18,7 +18,7 @@ from agent_cells import (
     runtime_skill_name,
     validate_cell_specs,
 )
-from hutch_paths import expand_config_path, expand_config_paths, repo_relative
+from hutch_paths import expand_config_path, expand_config_paths, hutch_generated_dir, repo_relative
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +121,16 @@ def execution_batches(workflow: dict[str, Any]) -> list[list[dict[str, Any]]]:
 def yaml_list(values: list[str], indent: int = 2) -> str:
     prefix = " " * indent
     return "\n".join(f"{prefix}- {value}" for value in values)
+
+
+def shell_double_quoted_value(value: str) -> str:
+    """Escape a string for insertion inside shell double quotes."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("$", "\\$")
+        .replace("`", "\\`")
+    )
 
 
 def render_worker_profile(workflow: dict[str, Any], agent: dict[str, Any]) -> str:
@@ -270,6 +280,7 @@ def render_flow(workflow: dict[str, Any], prepare_script_name: str) -> str:
             )
     stages = "\n".join(batch_lines)
     final_artifact = workflow["stages"][-1]["artifact"]
+    repo_default = shell_double_quoted_value(str(ROOT))
     return f"""---
 name: {name}
 schedule: "{workflow['schedule']}"
@@ -289,7 +300,7 @@ Read these files first:
 
 Before the first batch, run:
 
-`export HUTCH_REPO="${{HUTCH_REPO:-$(CDPATH= cd -- \"$(dirname -- \"./prepare-run.sh\")/../..\" && pwd)}}"`
+`export HUTCH_REPO="${{HUTCH_REPO:-{repo_default}}}"`
 
 Execute these exact dependency batches in order. Concurrency limit: {maximum}.
 
@@ -336,8 +347,8 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
     wrapper_path.write_text(
         "#!/bin/sh\n"
         "set -eu\n"
-        "SCRIPT_DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n"
-        "HUTCH_REPO=${HUTCH_REPO:-$(CDPATH= cd -- \"$SCRIPT_DIR/../..\" && pwd)}\n"
+        f": \"${{HUTCH_REPO:={shell_double_quoted_value(str(ROOT))}}}\"\n"
+        "export HUTCH_REPO\n"
         f"exec python3 \"$HUTCH_REPO/scripts/prepare_native_flow_run.py\" "
         f"\"{workflow_arg}\" --profiles-dir \"{profiles_arg}\"\n",
         encoding="utf-8",
@@ -413,7 +424,7 @@ def main() -> int:
         workflow_path = args.workflow.resolve()
         workflow = load_and_validate(workflow_path)
         cao_repo = args.cao_repo.resolve() if args.cao_repo else expand_config_path(workflow["cao_repo"])
-        output = (args.output or ROOT / "generated" / workflow["name"]).resolve()
+        output = (args.output or hutch_generated_dir() / workflow["name"]).resolve()
         manifest = write_output(workflow_path, workflow, output, cao_repo)
         if args.install:
             install_bundle(manifest, cao_repo, args.replace, disable=not args.enable)

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from scripts.hutch_paths import hutch_projects_file, hutch_runs_dir
 from .model import (
     CampaignNotFound,
     ProjectNotFound,
@@ -448,11 +449,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9890)
-    parser.add_argument("--runs-dir", type=Path, default=ROOT / "runs")
+    parser.add_argument("--runs-dir", type=Path, default=hutch_runs_dir())
     parser.add_argument(
         "--projects-file",
         type=Path,
-        default=Path(os.environ.get("HUTCH_PROJECTS_FILE", ROOT / "hutch-projects.json")),
+        default=hutch_projects_file(),
         help="JSON registry of non-Git application project roots",
     )
     parser.add_argument(

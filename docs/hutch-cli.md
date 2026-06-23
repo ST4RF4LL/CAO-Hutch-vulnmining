@@ -31,6 +31,18 @@ Use global `--json` for stable machine-readable output and `--url` to select ano
 
 Compilation does not install unless `--install` is present. Installed schedules remain disabled unless `--enable` is also present.
 
+## Runtime data layout
+
+Mutable Hutch data is stored below `~/.hutch` by default:
+
+- `~/.hutch/runs/` — Run instances, durable state, events, task inboxes, result outboxes, artifacts, snapshots, and Agent Cell workspaces.
+- `~/.hutch/runs/.trash/` — deleted Run records.
+- `~/.hutch/workflows/` — generated target-specific workflow files.
+- `~/.hutch/generated/` — compiled CAO bundles and generated Agent profiles.
+- `~/.hutch/projects/projects.json` — Dashboard project registry.
+
+Set `HUTCH_HOME=/path/to/runtime-root` to relocate these directories. Source workflows, templates, docs, and code remain in the Git checkout.
+
 ## Client configurations
 
 - Codex: `.codex/config.toml`, root `AGENTS.md`, `qu-orchestrator`, and `qu-construct-agent` skills.

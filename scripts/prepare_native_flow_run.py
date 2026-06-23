@@ -19,7 +19,7 @@ from run_cao_flow import (
     source_fingerprint,
     task_document,
 )
-from hutch_paths import expand_config_path, expand_config_paths
+from hutch_paths import expand_config_path, expand_config_paths, hutch_generated_dir, hutch_runs_dir
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +38,7 @@ def load_workflow(path: Path) -> dict[str, Any]:
 
 def unique_run_dir(workflow_name: str) -> Path:
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%f")
-    return ROOT / "runs" / f"{workflow_name}-{stamp}"
+    return hutch_runs_dir() / f"{workflow_name}-{stamp}"
 
 
 def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, Any]:
@@ -68,7 +68,7 @@ def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, 
     profiles_dir = (
         profiles_dir.resolve()
         if profiles_dir
-        else ROOT / "generated" / workflow["name"] / "profiles"
+        else hutch_generated_dir() / workflow["name"] / "profiles"
     )
     cells = prepare_agent_cells(
         workflow,

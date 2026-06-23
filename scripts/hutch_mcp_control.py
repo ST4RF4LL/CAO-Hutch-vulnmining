@@ -14,7 +14,7 @@ from hutch_cli import HutchCliError, HutchClient
 from adaptive_audit import atomic_json, load_json
 from generate_cao_native_flow import install_bundle, load_and_validate, write_output
 from hutch_campaign import DEFAULT_SKILL_ROOTS, mining_workflow, planning_workflow, recon_workflow
-from hutch_paths import default_cao_repo
+from hutch_paths import default_cao_repo, hutch_generated_dir, hutch_runs_dir, hutch_workflows_dir
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -183,8 +183,8 @@ class HutchMcpControl:
         replace_existing: bool,
         start: bool,
     ) -> dict[str, Any]:
-        workflow_path = ROOT / "workflows" / f"{workflow['name']}.generated.json"
-        output = ROOT / "generated" / workflow["name"]
+        workflow_path = hutch_workflows_dir() / f"{workflow['name']}.generated.json"
+        output = hutch_generated_dir() / workflow["name"]
         atomic_json(workflow_path, workflow)
         validated = load_and_validate(workflow_path)
         manifest = write_output(
@@ -242,8 +242,9 @@ class HutchMcpControl:
         def action() -> dict[str, Any]:
             if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", upstream_run_id):
                 raise ValueError(f"invalid upstream run id: {upstream_run_id!r}")
-            run_dir = (ROOT / "runs" / upstream_run_id).resolve()
-            if run_dir.parent != (ROOT / "runs").resolve() or not run_dir.is_dir():
+            runs_dir = hutch_runs_dir().resolve()
+            run_dir = (runs_dir / upstream_run_id).resolve()
+            if run_dir.parent != runs_dir or not run_dir.is_dir():
                 raise ValueError(f"upstream run not found: {upstream_run_id}")
             state = load_json(run_dir / "state.json")
             campaign = state.get("campaign") or {}

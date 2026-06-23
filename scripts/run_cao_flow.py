@@ -37,6 +37,7 @@ from agent_cells import (
     validate_cell_specs,
 )
 from hutch_paths import default_cao_repo, expand_config_path, expand_config_paths
+from hutch_paths import hutch_runs_dir
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -809,7 +810,7 @@ def main() -> int:
     parser.add_argument("workflow", type=Path)
     parser.add_argument("--target", type=Path)
     parser.add_argument("--run-id", default=datetime.now().strftime("%Y%m%d-%H%M%S-djl-security-review"))
-    parser.add_argument("--runs-dir", type=Path, default=ROOT / "runs")
+    parser.add_argument("--runs-dir", type=Path, default=hutch_runs_dir())
     parser.add_argument("--cao-repo", type=Path, default=DEFAULT_CAO_REPO)
     parser.add_argument("--cao-url", default="http://127.0.0.1:9889")
     parser.add_argument("--stage-timeout", type=int, default=900)
