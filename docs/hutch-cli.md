@@ -20,6 +20,40 @@
 
 Use global `--json` for stable machine-readable output and `--url` to select another Hutch instance.
 
+## Quick deployment
+
+`bin/hutch-deploy` initializes the local runtime directory, starts CAO and the
+Hutch Dashboard, and can optionally register a project or install a template
+Flow. It does not patch CAO and does not force Codex or OpenCode globally; the
+deploy check only requires at least one of `codex` or `opencode` to exist.
+
+```sh
+./bin/hutch-deploy check
+./bin/hutch-deploy init
+./bin/hutch-deploy start
+./bin/hutch-deploy status
+./bin/hutch-deploy stop
+```
+
+One-shot local startup:
+
+```sh
+./bin/hutch-deploy all \
+  --cao-repo /path/to/cli-agent-orchestrator \
+  --hutch-home ~/.hutch
+```
+
+Install a generated template Flow during deployment:
+
+```sh
+./bin/hutch-deploy all \
+  --cao-repo /path/to/cli-agent-orchestrator \
+  --target-repo /path/to/service-repo \
+  --template one-run \
+  --flow-name service-one-run \
+  --install-flow
+```
+
 ## Customization
 
 ```sh
