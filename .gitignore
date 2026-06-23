@@ -13,3 +13,5 @@ workflows/*.generated.yaml
 workflows/*.generated.json
 __pycache__/
 *.pyc
+DESIGN.md
+DESIGN-ori.md
