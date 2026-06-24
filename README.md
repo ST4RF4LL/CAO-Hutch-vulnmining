@@ -105,7 +105,8 @@ CAO 自身的 runtime 数据仍由 CAO 管理，默认位于 `~/.aws/cli-agent-o
 ```bash
 ./bin/hutch --json flow from-template /absolute/path/to/target-repo \
   --template one-run \
-  --name target-one-run
+  --name target-one-run \
+  --provider codex
 ```
 
 默认输出为 `~/.hutch/workflows/<name>.generated.json`，避免把本机目标路径误提交到仓库。需要同时编译 CAO bundle：
@@ -114,8 +115,11 @@ CAO 自身的 runtime 数据仍由 CAO 管理，默认位于 `~/.aws/cli-agent-o
 ./bin/hutch --json flow from-template /absolute/path/to/target-repo \
   --template one-run \
   --name target-one-run \
+  --provider codex \
   --compile
 ```
+
+`--provider` 支持 `codex` 和 `opencode_cli`。不指定时使用模板声明的 provider。
 
 可用模板：
 

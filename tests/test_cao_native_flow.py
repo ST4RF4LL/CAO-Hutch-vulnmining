@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -177,6 +178,101 @@ class CaoNativeFlowTests(unittest.TestCase):
                     {"skill_roots": [str(skill_root)]},
                     [{"id": "worker", "profile": "worker", "skills": ["missing"]}],
                 )
+
+    def test_codex_agent_cell_uses_project_local_skill_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            skill_root = root / "skills"
+            source = skill_root / "common-review"
+            source.mkdir(parents=True)
+            (source / "SKILL.md").write_text(
+                "---\nname: common-review\ndescription: fixture\n---\n",
+                encoding="utf-8",
+            )
+            run_dir = root / "run"
+            for name in CELLS.CELL_LINKS:
+                (run_dir / name).mkdir(parents=True)
+
+            cells = CELLS.prepare_agent_cells(
+                {"provider": "codex", "skill_roots": [str(skill_root)]},
+                run_dir,
+                [
+                    {
+                        "id": "reviewer",
+                        "profile": "audit-reviewer",
+                        "skills": ["common-review"],
+                    }
+                ],
+            )
+
+            workspace = Path(cells["reviewer"]["workspace"])
+            copied = workspace / ".agents/skills/reviewer-common-review/SKILL.md"
+            self.assertTrue(copied.is_file())
+            self.assertEqual(cells["reviewer"]["provider"], "codex")
+            self.assertEqual(cells["reviewer"]["skills_dir"], str(copied.parent.parent))
+            self.assertIsNone(cells["reviewer"]["opencode_config"])
+            self.assertFalse((workspace / ".opencode/opencode.json").exists())
+
+    def test_codex_assignment_waits_for_mcp_startup_to_settle(self):
+        states = iter(
+            [
+                {"status": "idle"},
+                {"output": "Starting MCP servers (3/4)"},
+                {"status": "idle"},
+                {"output": ""},
+                {"status": "idle"},
+                {"output": ""},
+                {"status": "idle"},
+                {"output": ""},
+            ]
+        )
+
+        with mock.patch.object(ASSIGN, "_request", side_effect=lambda *args, **kwargs: next(states)):
+            with mock.patch.object(ASSIGN.time, "sleep"):
+                status = ASSIGN._wait_until_input_ready("deadbeef", "codex", 10)
+
+        self.assertEqual(status, "idle")
+
+    def test_codex_assignment_accepts_workspace_trust_prompt(self):
+        with mock.patch.object(ASSIGN, "_request", return_value={"success": True}) as request:
+            accepted = ASSIGN._accept_codex_trust_prompt(
+                "deadbeef",
+                "codex",
+                "Yes, allow Codex to work in this folder without asking for approval",
+            )
+
+        self.assertTrue(accepted)
+        request.assert_called_once_with(
+            "POST",
+            "/terminals/deadbeef/key",
+            params={"key": "Enter"},
+        )
+
+    def test_codex_assignment_accepts_truncated_workspace_trust_prompt(self):
+        with mock.patch.object(ASSIGN, "_request", return_value={"success": True}) as request:
+            accepted = ASSIGN._accept_codex_trust_prompt(
+                "deadbeef",
+                "codex",
+                "2. No, quit\n\n  Press enter to continue",
+            )
+
+        self.assertTrue(accepted)
+        request.assert_called_once_with(
+            "POST",
+            "/terminals/deadbeef/key",
+            params={"key": "Enter"},
+        )
+
+    def test_non_codex_assignment_does_not_accept_workspace_trust_prompt(self):
+        with mock.patch.object(ASSIGN, "_request") as request:
+            accepted = ASSIGN._accept_codex_trust_prompt(
+                "deadbeef",
+                "opencode_cli",
+                "allow Codex to work in this folder",
+            )
+
+        self.assertFalse(accepted)
+        request.assert_not_called()
 
     def test_stage_validation_advances_only_valid_contract(self):
         stage = {

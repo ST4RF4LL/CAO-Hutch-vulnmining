@@ -458,6 +458,8 @@ def render_and_install_flow(args: argparse.Namespace, env: dict[str, str]) -> di
     ]
     if args.strict_skills:
         render_command.append("--strict-skills")
+    if args.provider:
+        render_command.extend(["--provider", args.provider])
     for root in args.skill_root:
         render_command.extend(["--skill-root", str(Path(root).expanduser())])
     rendered = run_command(render_command, env=env)
@@ -584,6 +586,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--project-name")
     command.add_argument("--target-repo")
     command.add_argument("--template", default="one-run")
+    command.add_argument("--provider", choices=("codex", "opencode_cli"))
     command.add_argument("--flow-name")
     command.add_argument("--install-flow", action="store_true")
     command.add_argument("--start-flow", action="store_true")

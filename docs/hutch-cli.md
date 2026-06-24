@@ -61,9 +61,13 @@ Install a generated template Flow during deployment:
 ./bin/hutch agent import-opencode /path/to/opencode-config --output cao-profiles
 ./bin/hutch flow compile workflows/example.yaml
 ./bin/hutch flow compile workflows/example.yaml --install --replace
+./bin/hutch flow from-template /path/to/repo --template one-run \
+  --name service-one-run --provider codex --compile --install --replace
 ```
 
 Compilation does not install unless `--install` is present. Installed schedules remain disabled unless `--enable` is also present.
+CAO-native template flows support `codex` and `opencode_cli`; choose one with
+`flow from-template --provider`.
 
 ## Runtime data layout
 

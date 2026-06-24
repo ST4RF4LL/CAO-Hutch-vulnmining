@@ -23,6 +23,7 @@ from hutch_paths import expand_config_path, expand_config_paths, hutch_generated
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+SUPPORTED_PROVIDERS = {"codex", "opencode_cli"}
 
 
 class CompileError(RuntimeError):
@@ -39,8 +40,10 @@ def load_and_validate(path: Path) -> dict[str, Any]:
         raise CompileError("workflow must use hutch.cao-workflow.v1")
     if not NAME_RE.fullmatch(str(workflow.get("name", ""))):
         raise CompileError("workflow name must match [A-Za-z0-9_-]{1,64}")
-    if workflow.get("provider") != "opencode_cli":
-        raise CompileError("the CAO-native compiler currently requires provider=opencode_cli")
+    if workflow.get("provider") not in SUPPORTED_PROVIDERS:
+        raise CompileError(
+            "the CAO-native compiler requires provider=codex or provider=opencode_cli"
+        )
     agents = {agent["id"]: agent for agent in workflow.get("agents", [])}
     if not agents or not workflow.get("stages"):
         raise CompileError("workflow must define agents and stages")
@@ -135,6 +138,7 @@ def shell_double_quoted_value(value: str) -> str:
 
 def render_worker_profile(workflow: dict[str, Any], agent: dict[str, Any]) -> str:
     profile_name = f"{workflow['name']}-{agent['id']}"
+    provider = workflow["provider"]
     tools = ["fs_read", "fs_list", "fs_write", "execute_bash"]
     if agent.get("atlas"):
         tools.append("'@atlas'")
@@ -160,8 +164,13 @@ def render_worker_profile(workflow: dict[str, Any], agent: dict[str, Any]) -> st
     audit_skill_rules = ""
     if "audit-skills" in agent.get("skills", []):
         audit_runtime_name = runtime_skill_name(agent["id"], "audit-skills")
+        skill_root = (
+            f".opencode/skills/{audit_runtime_name}"
+            if provider == "opencode_cli"
+            else f".agents/skills/{audit_runtime_name}"
+        )
         audit_skill_rules = f"""
-- The copied Skill root is `.opencode/skills/{audit_runtime_name}/`; its component scanner is `.opencode/skills/{audit_runtime_name}/scripts/run_component_vulnerability_scan.py`. Resolve every `references/` and `scripts/` path from that root because upstream examples containing `skills/audit-skills/` do not match the isolated runtime alias.
+- The copied Skill root is `{skill_root}/`; its component scanner is `{skill_root}/scripts/run_component_vulnerability_scan.py`. Resolve every `references/` and `scripts/` path from that root because upstream examples containing `skills/audit-skills/` do not match the isolated runtime alias.
 - The Hutch task and output contracts override `audit-skills` default output paths. Put its temporary scanner workspace below `tmp/audit-skills/<task-id>/`, then translate required deliverables into the task's `artifacts/` paths.
 - Do not download or install CFR, de4dot, ILSpy, or any other tool. Use a referenced tool only when it is already installed and allowed by this task.
 - Treat component/version/CVE matches as leads. They are never confirmed vulnerabilities without reachable project code, controllable input, an unblocked source-to-sink path, exploitable impact, and safe reproduction evidence.
@@ -169,7 +178,7 @@ def render_worker_profile(workflow: dict[str, Any], agent: dict[str, Any]) -> st
     return f"""---
 name: {profile_name}
 description: {agent['description']}
-provider: opencode_cli
+provider: {provider}
 role: reviewer
 allowedTools:
 {yaml_list(tools)}
@@ -219,10 +228,30 @@ Every non-empty finding must satisfy `finding_contract` in the task JSON. Audit 
 
 def render_supervisor_profile(workflow: dict[str, Any], cao_repo: Path) -> str:
     profile_name = f"{workflow['name']}-supervisor"
+    if workflow["provider"] == "codex":
+        mcp_config = f"""mcpServers:
+  cao-mcp-server:
+    type: stdio
+    command: uv
+    args:
+      - --directory
+      - {cao_repo}
+      - run
+      - cao-mcp-server
+"""
+    else:
+        mcp_config = """mcpServers:
+  cao-mcp-server:
+    type: stdio
+    command: sh
+    args:
+      - -lc
+      - 'uv --directory "${CAO_REPO:?set CAO_REPO to your cli-agent-orchestrator checkout}" run cao-mcp-server'
+"""
     return f"""---
 name: {profile_name}
 description: CAO-native supervisor for the {workflow['name']} Hutch workflow.
-provider: opencode_cli
+provider: {workflow['provider']}
 role: supervisor
 allowedTools:
   - fs_read
@@ -230,13 +259,7 @@ allowedTools:
   - fs_write
   - execute_bash
   - '@cao-mcp-server'
-mcpServers:
-  cao-mcp-server:
-    type: stdio
-    command: sh
-    args:
-      - -lc
-      - 'uv --directory "${{CAO_REPO:?set CAO_REPO to your cli-agent-orchestrator checkout}}" run cao-mcp-server'
+{mcp_config}
 ---
 
 # Role
@@ -384,6 +407,7 @@ def manifest_path(value: str) -> Path:
 def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disable: bool) -> None:
     cao = ["uv", "--directory", str(cao_repo), "run", "cao"]
     workflow = json.loads(manifest_path(manifest["source"]).read_text(encoding="utf-8"))
+    provider = str(workflow["provider"])
     policies = {
         f"{workflow['name']}-supervisor": [("supervisor", [])],
         **{
@@ -395,14 +419,15 @@ def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disa
     }
     for profile in manifest["profiles"]:
         profile_path = manifest_path(profile)
-        result = run(cao + ["install", str(profile_path), "--provider", "opencode_cli"], cao_repo)
+        result = run(cao + ["install", str(profile_path), "--provider", provider], cao_repo)
         if "Error:" in result.stdout:
             raise CompileError(result.stdout.strip())
-        install_opencode_agent_policy(
-            profile_path,
-            profile_path.stem,
-            policies[profile_path.stem],
-        )
+        if provider == "opencode_cli":
+            install_opencode_agent_policy(
+                profile_path,
+                profile_path.stem,
+                policies[profile_path.stem],
+            )
     name = manifest["workflow"]
     if replace:
         run(cao + ["flow", "remove", name], cao_repo, check=False)

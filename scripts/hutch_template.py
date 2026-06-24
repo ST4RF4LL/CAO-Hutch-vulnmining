@@ -27,6 +27,7 @@ from hutch_paths import (
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_ROOT = ROOT / "template" / "flows"
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+SUPPORTED_PROVIDERS = ("codex", "opencode_cli")
 
 
 class TemplateError(RuntimeError):
@@ -129,6 +130,7 @@ def instantiate_template(
     cao_repo: Path | None = None,
     skill_roots: list[Path] | None = None,
     strict_skills: bool = False,
+    provider: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, list[str]], Path]:
     path, source = load_template(template)
     target = expand_config_path(target)
@@ -147,6 +149,10 @@ def instantiate_template(
     workflow_name = safe_name(name or f"{target.name}-{suffix}")
 
     workflow = copy.deepcopy(source["workflow"])
+    if provider is not None:
+        if provider not in SUPPORTED_PROVIDERS:
+            raise TemplateError(f"unsupported provider: {provider}")
+        workflow["provider"] = provider
     workflow.update(
         {
             "schema": "hutch.cao-workflow.v1",
@@ -183,6 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--cao-repo", type=Path)
     render.add_argument("--skill-root", type=Path, action="append", default=[])
     render.add_argument("--strict-skills", action="store_true")
+    render.add_argument("--provider", choices=SUPPORTED_PROVIDERS)
     return parser
 
 
@@ -199,6 +206,7 @@ def main() -> int:
             cao_repo=args.cao_repo,
             skill_roots=args.skill_root or None,
             strict_skills=args.strict_skills,
+            provider=args.provider,
         )
         output = (args.output or default_output_for(workflow)).expanduser().resolve()
         atomic_json(output, workflow)

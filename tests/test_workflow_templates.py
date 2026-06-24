@@ -78,6 +78,48 @@ class WorkflowTemplateTests(unittest.TestCase):
             self.assertIn("repository-analyst", removed)
             self.assertNotIn("/" + "Users/", json.dumps(validated))
 
+    def test_one_run_template_can_target_codex(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = self.create_repository(root)
+
+            workflow, _, _ = TEMPLATE.instantiate_template(
+                "one-run",
+                repository,
+                name="target-codex-one-run",
+                cao_repo=root,
+                skill_roots=[],
+                provider="codex",
+            )
+            workflow_path = root / "target-codex-one-run.json"
+            atomic_json(workflow_path, workflow)
+
+            validated = GENERATOR.load_and_validate(workflow_path)
+            output = root / "bundle"
+            manifest = GENERATOR.write_output(
+                workflow_path,
+                validated,
+                output,
+                root,
+            )
+
+            self.assertEqual(validated["provider"], "codex")
+            self.assertIn(
+                "provider: codex",
+                Path(manifest["flow"]).read_text(encoding="utf-8"),
+            )
+            for profile in manifest["profiles"]:
+                self.assertIn(
+                    "provider: codex",
+                    Path(profile).read_text(encoding="utf-8"),
+                )
+            supervisor = (
+                output / "profiles/target-codex-one-run-supervisor.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("command: uv", supervisor)
+            self.assertIn(f"      - {root}", supervisor)
+            self.assertNotIn("command: sh", supervisor)
+
     def test_strict_skills_rejects_missing_template_skills(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

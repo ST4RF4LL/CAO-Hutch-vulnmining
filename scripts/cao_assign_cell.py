@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -15,6 +16,18 @@ from typing import Any
 
 class AssignError(RuntimeError):
     pass
+
+
+READY_STATUSES = {"idle", "completed"}
+CODEX_STARTUP_MARKERS = (
+    "Starting MCP server",
+    "Starting MCP servers",
+)
+CODEX_TRUST_MARKERS = (
+    "allow Codex to work in this folder",
+    "Do you trust the contents of this directory",
+    "2. No, quit",
+)
 
 
 def _api_base() -> str:
@@ -68,6 +81,108 @@ def _load_contract(task_path: Path) -> tuple[dict[str, Any], Path, Path, str]:
     return task, task_path, workspace, profile
 
 
+def _terminal_output(terminal_id: str) -> str:
+    value = _request(
+        "GET",
+        f"/terminals/{terminal_id}/output",
+        params={"mode": "last"},
+    )
+    return str(value.get("output", ""))
+
+
+def _accept_codex_trust_prompt(terminal_id: str, provider: str, output: str) -> bool:
+    if provider != "codex" or not any(marker in output for marker in CODEX_TRUST_MARKERS):
+        return False
+    _request(
+        "POST",
+        f"/terminals/{terminal_id}/key",
+        params={"key": "y"},
+    )
+    _request(
+        "POST",
+        f"/terminals/{terminal_id}/key",
+        params={"key": "Enter"},
+    )
+    return True
+
+
+def _session_terminal_ids(session: str) -> set[str]:
+    values = _request(
+        "GET",
+        f"/sessions/{urllib.parse.quote(session, safe='')}/terminals",
+    )
+    return {str(value["id"]) for value in values}
+
+
+def _guard_codex_trust_prompt(
+    session: str,
+    existing_ids: set[str],
+    profile: str,
+    stop: threading.Event,
+    timeout: float,
+) -> None:
+    """Accept a worker's trust prompt while its blocking create request runs."""
+    if timeout <= 0:
+        return
+    deadline = time.monotonic() + timeout
+    session_path = urllib.parse.quote(session, safe="")
+    while not stop.is_set() and time.monotonic() < deadline:
+        try:
+            values = _request("GET", f"/sessions/{session_path}/terminals")
+            for value in values:
+                terminal_id = str(value["id"])
+                if terminal_id in existing_ids or value.get("agent_profile") != profile:
+                    continue
+                output = _terminal_output(terminal_id)
+                if _accept_codex_trust_prompt(terminal_id, "codex", output):
+                    return
+        except (AssignError, KeyError, TypeError):
+            pass
+        stop.wait(0.25)
+
+
+def _input_ready(provider: str, status: str, output: str) -> bool:
+    if status not in READY_STATUSES:
+        return False
+    if provider == "codex" and any(marker in output for marker in CODEX_STARTUP_MARKERS):
+        return False
+    return True
+
+
+def _wait_until_input_ready(
+    terminal_id: str,
+    provider: str,
+    timeout: float,
+) -> str:
+    """Wait for a stable post-initialization prompt before pasting the task."""
+    deadline = time.monotonic() + timeout
+    ready_samples = 0
+    status = "unknown"
+    output = ""
+    while time.monotonic() < deadline:
+        status = str(_request("GET", f"/terminals/{terminal_id}").get("status", "unknown"))
+        output = _terminal_output(terminal_id)
+        if _accept_codex_trust_prompt(terminal_id, provider, output):
+            ready_samples = 0
+            time.sleep(0.5)
+            continue
+        if _input_ready(provider, status, output):
+            ready_samples += 1
+            if ready_samples >= 3:
+                return status
+        else:
+            ready_samples = 0
+        time.sleep(0.5)
+    startup = next(
+        (marker for marker in CODEX_STARTUP_MARKERS if marker in output),
+        "none",
+    )
+    raise AssignError(
+        f"CAO terminal {terminal_id} did not become input-ready; "
+        f"last status={status}, startup_marker={startup}"
+    )
+
+
 def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
     task, task_path, workspace, profile = _load_contract(task_path)
     supervisor_id = os.environ.get("CAO_TERMINAL_ID")
@@ -78,7 +193,23 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
     session = str(supervisor["session_name"])
     provider = str(task["agent_cell"].get("provider", "opencode_cli"))
     terminal: dict[str, Any] | None = None
+    trust_stop = threading.Event()
+    trust_thread: threading.Thread | None = None
     try:
+        if provider == "codex":
+            existing_ids = _session_terminal_ids(session)
+            trust_thread = threading.Thread(
+                target=_guard_codex_trust_prompt,
+                args=(
+                    session,
+                    existing_ids,
+                    profile,
+                    trust_stop,
+                    ready_timeout,
+                ),
+                daemon=True,
+            )
+            trust_thread.start()
         terminal = _request(
             "POST",
             f"/sessions/{urllib.parse.quote(session, safe='')}/terminals",
@@ -91,17 +222,7 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
             timeout=max(ready_timeout, 30.0),
         )
         terminal_id = str(terminal["id"])
-        deadline = time.monotonic() + ready_timeout
-        status = "unknown"
-        while time.monotonic() < deadline:
-            status = str(_request("GET", f"/terminals/{terminal_id}").get("status", "unknown"))
-            if status in {"idle", "completed"}:
-                break
-            time.sleep(0.5)
-        else:
-            raise AssignError(
-                f"CAO terminal {terminal_id} did not become ready; last status={status}"
-            )
+        _wait_until_input_ready(terminal_id, provider, ready_timeout)
 
         message = (
             f"Execute task {task_path}. Read the JSON contract exactly. "
@@ -133,6 +254,10 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
             except Exception:
                 pass
         raise
+    finally:
+        trust_stop.set()
+        if trust_thread is not None:
+            trust_thread.join(timeout=1.0)
 
 
 def main() -> int:

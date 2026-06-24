@@ -17,6 +17,7 @@ CELL_LINKS = ("artifacts", "inbox", "outbox", "shared", "tmp")
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 OPENCODE_AGENTS_DIR = Path.home() / ".aws" / "opencode" / "agents"
 HUTCH_RUNS_GLOB = f"{hutch_runs_dir().resolve()}/**"
+SUPPORTED_PROVIDERS = {"codex", "opencode_cli"}
 
 
 class AgentCellError(RuntimeError):
@@ -41,7 +42,7 @@ def _skill_name(skill_file: Path) -> str:
 
 
 def runtime_skill_name(cell_id: str, source_name: str) -> str:
-    """Create a stable OpenCode skill alias that cannot collide with global skills."""
+    """Create a stable provider-local skill alias that cannot collide globally."""
     normalized = re.sub(r"[^a-z0-9]+", "-", f"{cell_id}-{source_name}".lower()).strip("-")
     if len(normalized) <= 64:
         return normalized
@@ -263,6 +264,9 @@ def prepare_agent_cells(
     """Create idempotent Cell workspaces and return their durable manifests."""
     specs = list(specs)
     validate_cell_specs(workflow, specs)
+    provider = str(workflow.get("provider", "opencode_cli"))
+    if provider not in SUPPORTED_PROVIDERS:
+        raise AgentCellError(f"unsupported Agent Cell provider: {provider}")
     requested = {skill for spec in specs for skill in spec.get("skills", [])}
     catalog = discover_skills(workflow.get("skill_roots", [])) if requested else {}
     cells: dict[str, dict[str, Any]] = {}
@@ -274,15 +278,21 @@ def prepare_agent_cells(
         workspace = cell_dir / "workspace"
         opencode_dir = workspace / ".opencode"
         agents_dir = opencode_dir / "agents"
-        skills_dir = opencode_dir / "skills"
+        codex_dir = workspace / ".agents"
+        skills_dir = (
+            opencode_dir / "skills"
+            if provider == "opencode_cli"
+            else codex_dir / "skills"
+        )
         workspace.mkdir(parents=True, exist_ok=True)
         _ensure_run_links(workspace, run_dir)
         if skills_dir.exists():
             shutil.rmtree(skills_dir)
         skills_dir.mkdir(parents=True)
-        if agents_dir.exists():
-            shutil.rmtree(agents_dir)
-        agents_dir.mkdir(parents=True)
+        if provider == "opencode_cli":
+            if agents_dir.exists():
+                shutil.rmtree(agents_dir)
+            agents_dir.mkdir(parents=True)
         skill_sources: dict[str, str] = {}
         runtime_skills: dict[str, str] = {}
         for skill in skills:
@@ -297,7 +307,7 @@ def prepare_agent_cells(
         rules = skill_permission_rules([(cell_id, skills)])
         profile_source_value = spec.get("profile_source")
         local_agent: Path | None = None
-        if profile_source_value:
+        if provider == "opencode_cli" and profile_source_value:
             profile_source = Path(profile_source_value).expanduser().resolve()
             if not profile_source.is_file():
                 raise AgentCellError(f"CAO profile source is absent: {profile_source}")
@@ -307,35 +317,38 @@ def prepare_agent_cells(
                 profile_source,
                 rules,
             )
-        config_path = opencode_dir / "opencode.json"
-        _write_json(
-            config_path,
-            {
-                "$schema": "https://opencode.ai/config.json",
-                "agent": {
-                    profile: {
-                        "permission": {
-                            "skill": rules,
-                            # Cell links resolve outside the workspace but stay
-                            # inside this immutable/durable run boundary.
-                            "external_directory": {
-                                "*": "deny",
-                                f"{run_dir.resolve()}/*": "allow",
-                            },
-                            "agent-skill-loader_*": "deny",
+        config_path: Path | None = None
+        if provider == "opencode_cli":
+            config_path = opencode_dir / "opencode.json"
+            _write_json(
+                config_path,
+                {
+                    "$schema": "https://opencode.ai/config.json",
+                    "agent": {
+                        profile: {
+                            "permission": {
+                                "skill": rules,
+                                # Cell links resolve outside the workspace but stay
+                                # inside this immutable/durable run boundary.
+                                "external_directory": {
+                                    "*": "deny",
+                                    f"{run_dir.resolve()}/*": "allow",
+                                },
+                                "agent-skill-loader_*": "deny",
+                            }
                         }
-                    }
+                    },
                 },
-            },
-        )
+            )
         manifest = {
             "schema": "hutch.agent-cell.v1",
             "id": cell_id,
             "profile": profile,
-            "provider": "opencode_cli",
+            "provider": provider,
             "cell_dir": str(cell_dir.resolve()),
             "workspace": str(workspace.resolve()),
-            "opencode_config": str(config_path.resolve()),
+            "skills_dir": str(skills_dir.resolve()),
+            "opencode_config": str(config_path.resolve()) if config_path else None,
             "opencode_agent": str(local_agent.resolve()) if local_agent else None,
             "skills": skills,
             "runtime_skills": runtime_skills,

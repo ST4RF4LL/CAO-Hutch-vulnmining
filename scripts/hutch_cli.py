@@ -170,6 +170,8 @@ def flow_from_template(args: argparse.Namespace, client: HutchClient) -> Any:
         command.extend(["--skill-root", str(Path(skill_root).expanduser().resolve())])
     if args.strict_skills:
         command.append("--strict-skills")
+    if args.provider:
+        command.extend(["--provider", args.provider])
     result = subprocess.run(
         command,
         cwd=ROOT,
@@ -385,6 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--cao-repo", default=str(DEFAULT_CAO_REPO))
     command.add_argument("--skill-root", action="append", default=[])
     command.add_argument("--strict-skills", action="store_true")
+    command.add_argument("--provider", choices=("codex", "opencode_cli"))
     command.add_argument("--compile", action="store_true")
     command.add_argument("--compile-output")
     command.add_argument("--install", action="store_true")

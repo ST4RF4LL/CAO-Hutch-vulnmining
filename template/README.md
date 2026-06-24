@@ -9,8 +9,12 @@ Quick render:
 ```bash
 ./bin/hutch --json flow from-template /absolute/path/to/target-repo \
   --template one-run \
-  --name target-one-run
+  --name target-one-run \
+  --provider codex
 ```
+
+The CAO-native compiler supports `codex` and `opencode_cli`. If `--provider`
+is omitted, the template's provider is preserved.
 
 The default rendered workflow path is `workflows/<name>.generated.json`, which is
 ignored by Git. Pass `--compile` to immediately build the CAO bundle, and
