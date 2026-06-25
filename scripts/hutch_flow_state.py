@@ -154,6 +154,101 @@ def coverage_gate(run_dir: Path, stage_id: str) -> dict[str, Any]:
     return {"ok": True, "stage": stage_id, "summary": summary}
 
 
+def domain_decision(run_dir: Path, stage_id: str) -> dict[str, Any]:
+    workflow, state = load_run(run_dir)
+    stage = stage_by_id(workflow, stage_id)
+    condition = stage.get("domain_condition")
+    if not condition:
+        raise StateError(f"stage {stage_id} has no domain condition")
+    for dependency in stage.get("depends_on", []):
+        if state["stages"][dependency]["status"] != "done":
+            raise StateError(f"dependency {dependency} is not validated")
+    plan = json.loads((run_dir / condition["plan_artifact"]).read_text(encoding="utf-8"))
+    decisions = {
+        decision["domain"]: decision
+        for decision in plan.get("decisions", [])
+        if isinstance(decision, dict) and decision.get("domain")
+    }
+    domain = condition["domain"]
+    if domain not in decisions:
+        raise StateError(f"domain plan has no decision for {domain}")
+    decision = decisions[domain]
+    if decision.get("action") not in {"run", "skip"}:
+        raise StateError(f"domain plan has invalid action for {domain}")
+    return {
+        "ok": True,
+        "stage": stage_id,
+        "domain": domain,
+        "action": decision["action"],
+        "reason": str(decision.get("reason", "")),
+        "evidence": decision.get("evidence", []),
+    }
+
+
+def skip_stage(run_dir: Path, stage_id: str) -> dict[str, Any]:
+    workflow, state = load_run(run_dir)
+    stage = stage_by_id(workflow, stage_id)
+    decision = domain_decision(run_dir, stage_id)
+    if decision["action"] != "skip":
+        raise StateError(f"domain plan requires stage {stage_id} to run")
+    artifact_path = run_dir / stage["artifact"]
+    sections = stage.get("required_sections", [])
+    lines = [
+        f"# Skipped domain audit: {decision['domain']}",
+        "",
+        f"Planning decision: `{decision['action']}`.",
+        "",
+        f"Reason: {decision['reason']}",
+        "",
+    ]
+    for section in sections:
+        lines.extend(
+            [
+                f"## {section}",
+                "",
+                f"Not executed because planning skipped the `{decision['domain']}` domain.",
+                "",
+            ]
+        )
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("\n".join(lines), encoding="utf-8")
+    result_path = run_dir / "outbox" / f"{stage['task_id']}.result.json"
+    atomic_json(
+        result_path,
+        {
+            "schema": "hutch.result.v1",
+            "task_id": stage["task_id"],
+            "stage": stage_id,
+            "status": "done",
+            "summary": f"Skipped {decision['domain']} audit: {decision['reason']}",
+            "artifacts": [stage["artifact"]],
+            "findings": [],
+            "limitations": [decision["reason"]],
+            "hutch_skipped": decision,
+        },
+    )
+    stage_state = state["stages"][stage_id]
+    stage_state.update(
+        {
+            "status": "done",
+            "validated_at": now(),
+            "skipped": True,
+            "skip_reason": decision["reason"],
+        }
+    )
+    state["status"] = "running"
+    state["current_stage"] = stage_id
+    atomic_json(run_dir / "state.json", state)
+    append_event(
+        run_dir,
+        "stage_skipped_by_plan",
+        stage=stage_id,
+        domain=decision["domain"],
+        reason=decision["reason"],
+    )
+    return {"ok": True, **decision, "status": "done"}
+
+
 def reconcile_report(run_dir: Path, stage_id: str) -> dict[str, Any]:
     """Reconcile aggregate metrics from machine results without changing findings."""
     workflow, _ = load_run(run_dir)
@@ -297,6 +392,12 @@ def main() -> int:
     coverage_parser = subparsers.add_parser("coverage")
     coverage_parser.add_argument("run_dir", type=Path)
     coverage_parser.add_argument("stage_id")
+    decision_parser = subparsers.add_parser("decision")
+    decision_parser.add_argument("run_dir", type=Path)
+    decision_parser.add_argument("stage_id")
+    skip_parser = subparsers.add_parser("skip")
+    skip_parser.add_argument("run_dir", type=Path)
+    skip_parser.add_argument("stage_id")
     reconcile_parser = subparsers.add_parser("reconcile-report")
     reconcile_parser.add_argument("run_dir", type=Path)
     reconcile_parser.add_argument("stage_id")
@@ -316,6 +417,10 @@ def main() -> int:
             )
         elif args.command == "coverage":
             value = coverage_gate(args.run_dir.resolve(), args.stage_id)
+        elif args.command == "decision":
+            value = domain_decision(args.run_dir.resolve(), args.stage_id)
+        elif args.command == "skip":
+            value = skip_stage(args.run_dir.resolve(), args.stage_id)
         elif args.command == "reconcile-report":
             value = reconcile_report(args.run_dir.resolve(), args.stage_id)
         elif args.command == "finalize":

@@ -16,6 +16,20 @@ Quick render:
 The CAO-native compiler supports `codex` and `opencode_cli`. If `--provider`
 is omitted, the template's provider is preserved.
 
+The `one-run` template executes repository reconnaissance, threat modeling,
+audit planning, two parallel security-dimension audits (attack surface and
+implementation boundaries), finding validation, and final reporting. The
+shorthand below renders, compiles, and installs it:
+
+```bash
+./bin/hutch flow one_run /absolute/path/to/target-repo --provider codex
+```
+
+Add `--no-supervisor` to select `one-run-no-supervisor`. That template installs
+all Java, Web, C/C++, Python, Reverse, and report profiles, while the
+`recon-planner` entry Agent conditionally launches only the domains selected by
+its validated plan.
+
 The default rendered workflow path is `workflows/<name>.generated.json`, which is
 ignored by Git. Pass `--compile` to immediately build the CAO bundle, and
 `--install --replace` if the rendered flow should be installed into CAO.

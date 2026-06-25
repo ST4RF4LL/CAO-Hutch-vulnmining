@@ -24,9 +24,10 @@ CODEX_STARTUP_MARKERS = (
     "Starting MCP servers",
 )
 CODEX_TRUST_MARKERS = (
-    "allow Codex to work in this folder",
-    "Do you trust the contents of this directory",
-    "2. No, quit",
+    "allow codex to work in this folder",
+    "do you trust the contents of this directory",
+    "do you trust the files in this folder",
+    "2. no, quit",
 )
 
 
@@ -91,13 +92,11 @@ def _terminal_output(terminal_id: str) -> str:
 
 
 def _accept_codex_trust_prompt(terminal_id: str, provider: str, output: str) -> bool:
-    if provider != "codex" or not any(marker in output for marker in CODEX_TRUST_MARKERS):
+    normalized = output.lower()
+    if provider != "codex" or not any(
+        marker in normalized for marker in CODEX_TRUST_MARKERS
+    ):
         return False
-    _request(
-        "POST",
-        f"/terminals/{terminal_id}/key",
-        params={"key": "y"},
-    )
     _request(
         "POST",
         f"/terminals/{terminal_id}/key",
@@ -118,6 +117,7 @@ def _guard_codex_trust_prompt(
     session: str,
     existing_ids: set[str],
     profile: str,
+    discovered_ids: set[str],
     stop: threading.Event,
     timeout: float,
 ) -> None:
@@ -133,6 +133,7 @@ def _guard_codex_trust_prompt(
                 terminal_id = str(value["id"])
                 if terminal_id in existing_ids or value.get("agent_profile") != profile:
                     continue
+                discovered_ids.add(terminal_id)
                 output = _terminal_output(terminal_id)
                 if _accept_codex_trust_prompt(terminal_id, "codex", output):
                     return
@@ -193,6 +194,7 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
     session = str(supervisor["session_name"])
     provider = str(task["agent_cell"].get("provider", "opencode_cli"))
     terminal: dict[str, Any] | None = None
+    discovered_ids: set[str] = set()
     trust_stop = threading.Event()
     trust_thread: threading.Thread | None = None
     try:
@@ -204,6 +206,7 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
                     session,
                     existing_ids,
                     profile,
+                    discovered_ids,
                     trust_stop,
                     ready_timeout,
                 ),
@@ -248,9 +251,12 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
             "working_directory": str(workspace),
         }
     except Exception:
+        cleanup_ids = set(discovered_ids)
         if terminal and terminal.get("id"):
+            cleanup_ids.add(str(terminal["id"]))
+        for terminal_id in cleanup_ids:
             try:
-                _request("DELETE", f"/terminals/{terminal['id']}")
+                _request("DELETE", f"/terminals/{terminal_id}")
             except Exception:
                 pass
         raise

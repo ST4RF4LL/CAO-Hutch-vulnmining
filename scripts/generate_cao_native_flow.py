@@ -96,6 +96,14 @@ def load_and_validate(path: Path) -> dict[str, Any]:
     concurrency = workflow.get("execution", {}).get("max_concurrency", 1)
     if not isinstance(concurrency, int) or not 1 <= concurrency <= 16:
         raise CompileError("execution.max_concurrency must be between 1 and 16")
+    execution = workflow.get("execution", {})
+    if execution.get("no_supervisor"):
+        entry_agent = execution.get("entry_agent")
+        if entry_agent not in agents:
+            raise CompileError("execution.entry_agent must reference an existing agent")
+        entry_stages = execution.get("entry_stages", [])
+        if not entry_stages or any(stage_id not in seen for stage_id in entry_stages):
+            raise CompileError("execution.entry_stages must reference existing stages")
     return workflow
 
 
@@ -142,19 +150,34 @@ def render_worker_profile(workflow: dict[str, Any], agent: dict[str, Any]) -> st
     tools = ["fs_read", "fs_list", "fs_write", "execute_bash"]
     if agent.get("atlas"):
         tools.append("'@atlas'")
-    mcp = ""
+    if agent.get("orchestrates"):
+        tools.append("'@cao-mcp-server'")
+    mcp_entries: list[str] = []
     atlas_rules = ""
     if agent.get("atlas"):
-        mcp = """\nmcpServers:
-  atlas:
+        mcp_entries.append("""  atlas:
     type: stdio
     command: atlas
     args:
-      - mcp
-"""
+      - mcp""")
         atlas_rules = """
 - Use Atlas for symbol discovery, callers/callees, dependency paths, and provenance where it materially strengthens the evidence. Verify important graph claims against source.
 """
+    if agent.get("orchestrates"):
+        cao_repo = expand_config_path(workflow["cao_repo"])
+        mcp_entries.append(f"""  cao-mcp-server:
+    type: stdio
+    command: uv
+    args:
+      - --directory
+      - {cao_repo}
+      - run
+      - cao-mcp-server""")
+    mcp = (
+        "\nmcpServers:\n" + "\n".join(mcp_entries) + "\n"
+        if mcp_entries
+        else ""
+    )
     approved_skills = (
         ", ".join(
             f"`{runtime_skill_name(agent['id'], name)}`" for name in agent.get("skills", [])
@@ -274,6 +297,7 @@ You are the deterministic supervisor of a CAO-owned Rabbit Hutch flow. CAO creat
 - Execute the rendered batches in order. Launch every worker in one batch before awaiting any worker in that batch. Never exceed the rendered concurrency bound.
 - A stage may run only after every dependency has passed Hutch validation.
 - After each assignment, record the CAO terminal ID and run the exact await command from the flow prompt. A worker's prose response or CAO TUI status is not completion evidence.
+- Codex may report a CAO terminal as `completed` while a long-running turn still shows a minutes-form progress spinner or background terminal. Never advance, delete, or retry from CAO terminal status; only the Hutch result-file gate below is authoritative.
 - On validation failure, delete the failed terminal and assign the same task once more with the validation error. Never invent, repair, or silently accept a worker artifact.
 - Stop on the second failure and leave the state and evidence intact for diagnosis.
 - Never modify the original target checkout or `shared/target-snapshot/`.
@@ -282,6 +306,8 @@ You are the deterministic supervisor of a CAO-owned Rabbit Hutch flow. CAO creat
 
 
 def render_flow(workflow: dict[str, Any], prepare_script_name: str) -> str:
+    if workflow.get("execution", {}).get("no_supervisor"):
+        return render_no_supervisor_flow(workflow, prepare_script_name)
     name = workflow["name"]
     supervisor = f"{name}-supervisor"
     timeout = int(workflow.get("execution", {}).get("stage_timeout_seconds", 1800))
@@ -346,6 +372,111 @@ Your final response must state the run directory, final state, final report path
 """
 
 
+def render_no_supervisor_flow(
+    workflow: dict[str, Any], prepare_script_name: str
+) -> str:
+    name = workflow["name"]
+    execution = workflow["execution"]
+    entry_agent = str(execution["entry_agent"])
+    entry_stage_ids = list(execution["entry_stages"])
+    stages = {stage["id"]: stage for stage in workflow["stages"]}
+    timeout = int(execution.get("stage_timeout_seconds", 1800))
+    maximum = int(execution.get("max_concurrency", 5))
+    entry_lines = []
+    for stage_id in entry_stage_ids:
+        stage = stages[stage_id]
+        entry_lines.append(
+            f"- `{stage_id}`: execute task `[[run_dir]]/inbox/{stage['task_id']}.task.json` "
+            f"yourself, write its artifacts and result, then run "
+            f"`python3 \"$HUTCH_REPO/scripts/hutch_flow_state.py\" validate "
+            f"\"[[run_dir]]\" {stage_id}`."
+        )
+    conditional = [
+        stage for stage in workflow["stages"] if stage.get("domain_condition")
+    ]
+    conditional_lines = []
+    for stage in conditional:
+        conditional_lines.append(
+            f"- `{stage['id']}` / domain `{stage['domain_condition']['domain']}`: "
+            f"decision `python3 \"$HUTCH_REPO/scripts/hutch_flow_state.py\" decision "
+            f"\"[[run_dir]]\" {stage['id']}`; task "
+            f"`[[run_dir]]/inbox/{stage['task_id']}.task.json`."
+        )
+    final_stage = workflow["stages"][-1]
+    repo_default = shell_double_quoted_value(str(ROOT))
+    return f"""---
+name: {name}
+schedule: "{workflow['schedule']}"
+agent_profile: {name}-{entry_agent}
+provider: {workflow['provider']}
+script: ./{prepare_script_name}
+---
+# CAO-owned end-to-end security workflow
+
+You are the recon and planning Agent for this workflow, not a separate
+Supervisor profile. Hutch prepared run `[[run_id]]` at `[[run_dir]]`.
+
+Read `[[manifest]]`, `[[state_file]]`, and `[[target_snapshot]]`, then run:
+
+`export HUTCH_REPO="${{HUTCH_REPO:-{repo_default}}}"`
+
+## Recon and planning
+
+Complete these stages directly and in order:
+
+{chr(10).join(entry_lines)}
+
+The planning JSON is authoritative. It must decide `run` or `skip` for every
+configured domain based on repository languages, frameworks, interfaces,
+artifacts, and threat evidence. Do not run an irrelevant domain merely because
+its profile exists.
+
+## Conditional domain audits
+
+Configured domains:
+
+{chr(10).join(conditional_lines)}
+
+Evaluate all decisions first. For each decision:
+
+1. If `action=run`, launch the task with
+   `python3 "$HUTCH_REPO/scripts/cao_assign_cell.py" <absolute-task-path>`,
+   then record it with `hutch_flow_state.py start`. Launch independent selected
+   domains before awaiting, up to concurrency {maximum}.
+2. If `action=skip`, run
+   `python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" skip "[[run_dir]]" <stage-id>`.
+   Hutch writes explicit skipped evidence for the final report.
+3. Await every launched domain with
+   `python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" await "[[run_dir]]" <stage-id> --timeout {timeout}`.
+4. Delete completed worker terminals with CAO MCP `delete_terminal`.
+
+CAO's Codex terminal status is advisory only and may show `completed` while a
+minutes-form progress spinner or background terminal is still active. Never
+advance or delete a worker from CAO status; only Hutch's result-file validation
+is completion evidence.
+
+## Final report
+
+After every domain is `done` or plan-skipped, launch final task
+`[[run_dir]]/inbox/{final_stage['task_id']}.task.json` with
+`cao_assign_cell.py`, record it with:
+
+`python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" start "[[run_dir]]" {final_stage['id']} <terminal-id>`
+
+and await it with:
+
+`python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" await "[[run_dir]]" {final_stage['id']} --timeout {timeout}`
+
+Then run:
+
+`python3 "$HUTCH_REPO/scripts/hutch_flow_state.py" finalize "[[run_dir]]"`
+
+Your final response must state the run directory, final state, and report path
+`[[run_dir]]/{final_stage['artifact']}`. Never fabricate output for a selected
+domain that failed or a skipped domain.
+"""
+
+
 def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, cao_repo: Path) -> dict[str, Any]:
     if output.exists():
         shutil.rmtree(output)
@@ -353,9 +484,13 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
     profiles_dir.mkdir(parents=True)
 
     profile_paths: list[Path] = []
-    supervisor_path = profiles_dir / f"{workflow['name']}-supervisor.md"
-    supervisor_path.write_text(render_supervisor_profile(workflow, cao_repo), encoding="utf-8")
-    profile_paths.append(supervisor_path)
+    no_supervisor = bool(workflow.get("execution", {}).get("no_supervisor"))
+    if not no_supervisor:
+        supervisor_path = profiles_dir / f"{workflow['name']}-supervisor.md"
+        supervisor_path.write_text(
+            render_supervisor_profile(workflow, cao_repo), encoding="utf-8"
+        )
+        profile_paths.append(supervisor_path)
     for agent in workflow["agents"]:
         path = profiles_dir / f"{workflow['name']}-{agent['id']}.md"
         path.write_text(render_worker_profile(workflow, agent), encoding="utf-8")
@@ -384,7 +519,14 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
         "workflow": workflow["name"],
         "source": repo_relative(workflow_path),
         "flow": repo_relative(flow_path),
-        "supervisor_profile": f"{workflow['name']}-supervisor",
+        "supervisor_profile": (
+            None if no_supervisor else f"{workflow['name']}-supervisor"
+        ),
+        "entry_profile": (
+            f"{workflow['name']}-{workflow['execution']['entry_agent']}"
+            if no_supervisor
+            else f"{workflow['name']}-supervisor"
+        ),
         "profiles": [repo_relative(path) for path in profile_paths],
         "register_enabled": bool(workflow.get("execution", {}).get("register_enabled", False)),
     }
@@ -409,14 +551,13 @@ def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disa
     workflow = json.loads(manifest_path(manifest["source"]).read_text(encoding="utf-8"))
     provider = str(workflow["provider"])
     policies = {
-        f"{workflow['name']}-supervisor": [("supervisor", [])],
-        **{
-            f"{workflow['name']}-{agent['id']}": [
-                (agent["id"], agent.get("skills", []))
-            ]
-            for agent in workflow["agents"]
-        },
+        f"{workflow['name']}-{agent['id']}": [
+            (agent["id"], agent.get("skills", []))
+        ]
+        for agent in workflow["agents"]
     }
+    if not workflow.get("execution", {}).get("no_supervisor"):
+        policies[f"{workflow['name']}-supervisor"] = [("supervisor", [])]
     for profile in manifest["profiles"]:
         profile_path = manifest_path(profile)
         result = run(cao + ["install", str(profile_path), "--provider", provider], cao_repo)

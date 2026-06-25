@@ -7,6 +7,8 @@ import json
 import os
 import re
 import shlex
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,6 +31,23 @@ from .model import (
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CODEX_TRUST_MARKERS = (
+    "allow codex to work in this folder",
+    "do you trust the contents of this directory",
+    "do you trust the files in this folder",
+    "2. no, quit",
+)
+CODEX_ACTIVE_PROGRESS_RE = re.compile(
+    r"\((?:(?:\d+h\s+)?(?:\d+m\s+)?)\d+s\s*[•·]\s*esc to interrupt\)",
+    re.IGNORECASE,
+)
+CODEX_BACKGROUND_RUNNING_RE = re.compile(
+    r"\b\d+\s+background terminals?\s+running\b",
+    re.IGNORECASE,
+)
+ANSI_ESCAPE_RE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
+)
 
 
 class CaoGatewayError(RuntimeError):
@@ -91,17 +110,38 @@ class CaoGateway:
             cwd = self._request("GET", f"/terminals/{terminal_id}/working-directory")
         except CaoGatewayError:
             cwd = {}
+        raw_status = metadata.get("status")
+        output_text = str(output.get("output", ""))
+        status = self._effective_terminal_status(
+            metadata.get("provider"), raw_status, output_text
+        )
         return {
             "terminal_id": terminal_id,
             "session": metadata.get("session_name"),
             "window": metadata.get("name"),
             "provider": metadata.get("provider"),
             "agent_profile": metadata.get("agent_profile"),
-            "status": metadata.get("status"),
+            "status": status,
+            "raw_status": raw_status,
             "working_directory": cwd.get("working_directory"),
             "live": True,
-            "output": output.get("output", ""),
+            "output": output_text,
         }
+
+    @staticmethod
+    def _effective_terminal_status(
+        provider: Any, raw_status: Any, output: str
+    ) -> Any:
+        """Correct known Codex TUI false-completed frames for Hutch consumers."""
+        if provider != "codex" or raw_status != "completed":
+            return raw_status
+        clean = ANSI_ESCAPE_RE.sub("", output)
+        tail = "\n".join(clean.splitlines()[-40:])
+        if CODEX_ACTIVE_PROGRESS_RE.search(tail):
+            return "processing"
+        if CODEX_BACKGROUND_RUNNING_RE.search(tail):
+            return "processing"
+        return raw_status
 
     def send_input(self, terminal_id: str, message: str) -> dict[str, Any]:
         terminal_id = self._terminal_id(terminal_id)
@@ -140,6 +180,87 @@ class CaoGateway:
                     sessions.add(name)
         return sessions
 
+    @staticmethod
+    def _session_terminal_records(value: Any) -> list[dict[str, Any]]:
+        records = value.get("terminals", []) if isinstance(value, dict) else value
+        return records if isinstance(records, list) else []
+
+    def _session_terminal_ids(self, session_name: str) -> set[str]:
+        try:
+            value = self._request(
+                "GET",
+                f"/sessions/{urllib.parse.quote(session_name, safe='')}/terminals",
+            )
+        except CaoGatewayError as error:
+            if error.status == HTTPStatus.NOT_FOUND:
+                return set()
+            raise
+        return {
+            str(record["id"])
+            for record in self._session_terminal_records(value)
+            if isinstance(record, dict) and record.get("id")
+        }
+
+    def _accept_codex_trust_prompt(self, terminal_id: str) -> bool:
+        metadata = self._request("GET", f"/terminals/{terminal_id}")
+        if metadata.get("provider") != "codex":
+            return False
+        output = self._request(
+            "GET",
+            f"/terminals/{terminal_id}/output",
+            {"mode": "last"},
+        )
+        text = str(output.get("output", "")).lower()
+        if not any(marker in text for marker in CODEX_TRUST_MARKERS):
+            return False
+        self._request("POST", f"/terminals/{terminal_id}/key", {"key": "Enter"})
+        return True
+
+    def _guard_codex_flow_trust_prompt(
+        self,
+        session_name: str,
+        existing_ids: set[str],
+        stop: threading.Event,
+        timeout: float = 90.0,
+    ) -> None:
+        """Accept the conductor Codex trust prompt while CAO starts a Flow."""
+        deadline = time.monotonic() + timeout
+        session_path = urllib.parse.quote(session_name, safe="")
+        while not stop.is_set() and time.monotonic() < deadline:
+            try:
+                value = self._request("GET", f"/sessions/{session_path}/terminals")
+                for record in self._session_terminal_records(value):
+                    if not isinstance(record, dict) or not record.get("id"):
+                        continue
+                    terminal_id = str(record["id"])
+                    if terminal_id in existing_ids:
+                        continue
+                    if self._accept_codex_trust_prompt(terminal_id):
+                        return
+            except CaoGatewayError:
+                pass
+            stop.wait(0.25)
+
+    def _start_flow(self, name: str) -> Any:
+        session_name = f"cao-flow-{name}"
+        existing_ids = self._session_terminal_ids(session_name)
+        stop = threading.Event()
+        guard = threading.Thread(
+            target=self._guard_codex_flow_trust_prompt,
+            args=(session_name, existing_ids, stop),
+            daemon=True,
+        )
+        guard.start()
+        try:
+            return self._request(
+                "POST",
+                f"/flows/{urllib.parse.quote(name, safe='')}/run",
+                timeout=180.0,
+            )
+        finally:
+            stop.set()
+            guard.join(timeout=1.0)
+
     def flow_action(self, name: str, action: str) -> dict[str, Any]:
         name = self._name(name, "flow name")
         endpoints = {
@@ -149,10 +270,13 @@ class CaoGateway:
         }
         if action not in endpoints:
             raise CaoGatewayError("unsupported flow action", HTTPStatus.BAD_REQUEST)
-        result = self._request(
-            "POST",
-            f"/flows/{urllib.parse.quote(name, safe='')}/{endpoints[action]}",
-            timeout=180.0 if action == "start" else 30.0,
+        result = (
+            self._start_flow(name)
+            if action == "start"
+            else self._request(
+                "POST",
+                f"/flows/{urllib.parse.quote(name, safe='')}/{endpoints[action]}",
+            )
         )
         return {"ok": True, "flow": name, "action": action, "result": result}
 
@@ -183,9 +307,7 @@ class CaoGateway:
             raise CaoGatewayError(f"invalid command: {error}", HTTPStatus.BAD_REQUEST) from error
         if parts[:3] == ["cao", "flow", "run"] and len(parts) == 4:
             flow = self._name(parts[3], "flow name")
-            result = self._request(
-                "POST", f"/flows/{urllib.parse.quote(flow, safe='')}/run", timeout=180.0
-            )
+            result = self._start_flow(flow)
             return {"ok": True, "command": command, "kind": "flow", "result": result}
         if parts[:2] == ["cao", "launch"] and len(parts) >= 3:
             profile = self._name(parts[2], "agent profile")

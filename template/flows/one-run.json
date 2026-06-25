@@ -3,9 +3,9 @@
   "id": "one-run",
   "version": "1.0.0",
   "name_suffix": "one-run",
-  "description": "First-contact baseline flow combining information collection, threat modeling, vulnerability mining, validation, and reporting.",
+  "description": "Single CAO flow combining repository reconnaissance, threat modeling, audit planning, dimension-based vulnerability mining, validation, and reporting.",
   "workflow": {
-    "description": "One-run first-contact baseline for a Git checkout: collect repository intelligence, model threats, mine vulnerabilities, validate findings, and produce a final report.",
+    "description": "One-run audit for a Git checkout: collect repository intelligence, model threats, plan complete coverage, audit security dimensions, validate findings, and produce a final report.",
     "schedule": "0 0 1 1 *",
     "provider": "opencode_cli",
     "snapshot": {
@@ -41,6 +41,17 @@
         ]
       },
       {
+        "id": "audit-planner",
+        "description": "Plans complete security-dimension coverage from repository and threat intelligence.",
+        "mission": "Read the complete module inventory, architecture, attack surface, trust boundaries, and threat model. Produce a bounded audit plan that assigns every module to one or more coherent security dimensions, prioritizes threat-linked paths, preserves negative coverage obligations, and never silently omits a module.",
+        "atlas": false,
+        "skills": [
+          "secure-code-review-common",
+          "audit-artifact-management",
+          "audit-skills"
+        ]
+      },
+      {
         "id": "attack-surface-miner",
         "description": "Mines externally reachable and attacker-controlled flows.",
         "mission": "Audit externally reachable entry points and attacker-controlled data flows for injection, SSRF, deserialization, file/path/archive abuse, command execution, unsafe redirects, authentication, authorization, and security-control bypass. Prove source-to-sink reachability before reporting candidates.",
@@ -65,17 +76,6 @@
           "c-cpp-memory-safety-review",
           "c-cpp-native-boundary-review",
           "c-cpp-file-privilege-review",
-          "audit-skills"
-        ]
-      },
-      {
-        "id": "component-supplychain-miner",
-        "description": "Mines component, dependency, build, release, and configuration trust issues.",
-        "mission": "Audit dependency declarations, build plugins, repositories, artifact downloads, dynamic plugins, model or data loading, CI/release scripts, secrets, unsafe defaults, and configuration trust. Separate locally source-proven issues from external verification leads.",
-        "atlas": false,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
           "audit-skills"
         ]
       },
@@ -211,19 +211,62 @@
         ]
       },
       {
-        "id": "attack-surface-mining",
+        "id": "audit-planning",
         "task_id": "O-0003",
-        "agent": "attack-surface-miner",
+        "agent": "audit-planner",
         "depends_on": [
           "threat-intelligence"
         ],
-        "artifact": "artifacts/one-run/03-attack-surface-mining.md",
+        "artifact": "artifacts/one-run/03-audit-plan.md",
+        "required_artifacts": [
+          "artifacts/one-run/audit-plan.json"
+        ],
+        "inputs": [
+          "shared/repository-inventory.json",
+          "shared/modules.json",
+          "artifacts/one-run/01-architecture.md",
+          "artifacts/one-run/architecture.json",
+          "artifacts/one-run/02-threat-model.md",
+          "artifacts/one-run/attack-surface.json",
+          "artifacts/one-run/trust-boundaries.json",
+          "artifacts/one-run/threat-model.json"
+        ],
+        "required_sections": [
+          "Planning Basis",
+          "Security Dimensions",
+          "Strategy and Concurrency",
+          "Module and Path Assignments",
+          "Coverage Matrix",
+          "Risks and Limitations"
+        ],
+        "objective": "Produce a machine-valid plan covering every module across attack-surface and implementation-boundary security dimensions.",
+        "json_contracts": [
+          {
+            "artifact": "artifacts/one-run/audit-plan.json",
+            "schema": "hutch.audit-plan.v1"
+          }
+        ],
+        "audit_plan_contract": {
+          "inventory": "shared/modules.json",
+          "artifact": "artifacts/one-run/audit-plan.json"
+        }
+      },
+      {
+        "id": "attack-surface-mining",
+        "task_id": "O-0004",
+        "agent": "attack-surface-miner",
+        "depends_on": [
+          "audit-planning"
+        ],
+        "artifact": "artifacts/one-run/04-attack-surface-mining.md",
         "inputs": [
           "shared/modules.json",
           "artifacts/one-run/01-architecture.md",
           "artifacts/one-run/02-threat-model.md",
           "artifacts/one-run/attack-surface.json",
-          "artifacts/one-run/threat-model.json"
+          "artifacts/one-run/threat-model.json",
+          "artifacts/one-run/03-audit-plan.md",
+          "artifacts/one-run/audit-plan.json"
         ],
         "required_sections": [
           "Scope and Method",
@@ -237,18 +280,20 @@
       },
       {
         "id": "implementation-mining",
-        "task_id": "O-0004",
+        "task_id": "O-0005",
         "agent": "implementation-miner",
         "depends_on": [
-          "threat-intelligence"
+          "audit-planning"
         ],
-        "artifact": "artifacts/one-run/04-implementation-mining.md",
+        "artifact": "artifacts/one-run/05-implementation-mining.md",
         "inputs": [
           "shared/modules.json",
           "artifacts/one-run/01-architecture.md",
           "artifacts/one-run/02-threat-model.md",
           "artifacts/one-run/trust-boundaries.json",
-          "artifacts/one-run/threat-model.json"
+          "artifacts/one-run/threat-model.json",
+          "artifacts/one-run/03-audit-plan.md",
+          "artifacts/one-run/audit-plan.json"
         ],
         "required_sections": [
           "Scope and Method",
@@ -261,47 +306,19 @@
         "objective": "Mine implementation-level and runtime-boundary vulnerability candidates with source evidence."
       },
       {
-        "id": "component-supplychain-mining",
-        "task_id": "O-0005",
-        "agent": "component-supplychain-miner",
-        "depends_on": [
-          "threat-intelligence"
-        ],
-        "artifact": "artifacts/one-run/05-component-supplychain-mining.md",
-        "inputs": [
-          "shared/modules.json",
-          "artifacts/one-run/01-architecture.md",
-          "artifacts/one-run/02-threat-model.md",
-          "artifacts/one-run/external-interfaces.json",
-          "artifacts/one-run/threat-model.json"
-        ],
-        "required_sections": [
-          "Scope and Method",
-          "Dependency and Build Trust",
-          "Artifact and Plugin Trust",
-          "Candidate Findings",
-          "External Verification Leads",
-          "Evidence and Limitations"
-        ],
-        "objective": "Mine component, dependency, build, release, and configuration trust issues using local evidence."
-      },
-      {
         "id": "finding-validation",
         "task_id": "O-0006",
         "agent": "finding-validator",
         "depends_on": [
           "attack-surface-mining",
-          "implementation-mining",
-          "component-supplychain-mining"
+          "implementation-mining"
         ],
         "artifact": "artifacts/one-run/06-validation.md",
         "inputs": [
-          "artifacts/one-run/03-attack-surface-mining.md",
-          "artifacts/one-run/04-implementation-mining.md",
-          "artifacts/one-run/05-component-supplychain-mining.md",
-          "outbox/O-0003.result.json",
           "outbox/O-0004.result.json",
-          "outbox/O-0005.result.json"
+          "outbox/O-0005.result.json",
+          "artifacts/one-run/04-attack-surface-mining.md",
+          "artifacts/one-run/05-implementation-mining.md"
         ],
         "required_sections": [
           "Validation Method",
@@ -325,9 +342,9 @@
         "inputs": [
           "artifacts/one-run/01-architecture.md",
           "artifacts/one-run/02-threat-model.md",
-          "artifacts/one-run/03-attack-surface-mining.md",
-          "artifacts/one-run/04-implementation-mining.md",
-          "artifacts/one-run/05-component-supplychain-mining.md",
+          "artifacts/one-run/03-audit-plan.md",
+          "artifacts/one-run/04-attack-surface-mining.md",
+          "artifacts/one-run/05-implementation-mining.md",
           "artifacts/one-run/06-validation.md",
           "outbox/O-0006.result.json"
         ],

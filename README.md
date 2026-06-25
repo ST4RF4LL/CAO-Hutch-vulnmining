@@ -130,6 +130,41 @@ CAO 自身的 runtime 数据仍由 CAO 管理，默认位于 `~/.aws/cli-agent-o
 - `security-knowledge-one-run`：基于 `secknowledge-skill` 和 `hack-skills` 的首次摸底单 Flow。
 - `security-knowledge-recon` / `security-knowledge-threat-model` / `security-knowledge-vulnerability-mining`：同一安全知识体系拆成三段式 Flow。
 
+### 一条命令创建单次完整审计 Flow
+
+`flow one_run` 会针对一个 Git checkout 渲染 `one-run` 模板，编译并安装到
+CAO。该 Flow 依次执行仓库侦察、威胁建模、审计规划、分维度审计、漏洞复核和
+最终报告；默认替换同名 Flow，但不会自动运行：
+
+```bash
+./bin/hutch --json flow one_run /absolute/path/to/target-repo \
+  --provider codex
+```
+
+安装后立即运行：
+
+```bash
+./bin/hutch --json flow one_run /absolute/path/to/target-repo \
+  --provider codex \
+  --start
+```
+
+可用 `--name` 指定 CAO Flow 名称，或用 `--no-replace` 禁止替换已有同名 Flow。
+
+不生成独立 Supervisor profile 时，使用：
+
+```bash
+./bin/hutch --json flow one_run /absolute/path/to/target-repo \
+  --provider codex \
+  --no-supervisor \
+  --start
+```
+
+该模式由 `recon-planner` 作为 CAO Flow 入口，依次完成 recon 和 planning。
+Planning 必须对 Java、Web、C/C++、Python、Reverse 五个领域分别输出
+`run` 或 `skip`。所有领域 profile 都会安装，但只有计划选择的 auditor 会启动；
+跳过项由 Hutch 写入明确的跳过证据，最后由 report agent 统一整合。
+
 模板声明的通用 skill 会在本地 `skill_roots` 中存在时自动挂载；缺失时默认降级渲染。若希望缺少 skill 直接失败，增加 `--strict-skills`。
 
 ### `secknowledge-skill` / `hack-skills` 模板

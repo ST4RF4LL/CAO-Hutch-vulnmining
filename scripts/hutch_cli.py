@@ -223,6 +223,38 @@ def flow_templates(_: argparse.Namespace, __: HutchClient) -> Any:
         raise HutchCliError(f"template lister returned invalid JSON: {result.stdout}") from error
 
 
+def flow_one_run(args: argparse.Namespace, client: HutchClient) -> Any:
+    """Render, compile, and install the standard single-run audit Flow."""
+    template = "one-run-no-supervisor" if args.no_supervisor else "one-run"
+    value = flow_from_template(
+        argparse.Namespace(
+            target=args.project_directory,
+            template=template,
+            name=args.name,
+            output=args.output,
+            cao_repo=args.cao_repo,
+            skill_root=args.skill_root,
+            strict_skills=args.strict_skills,
+            provider=args.provider,
+            compile=True,
+            compile_output=args.compile_output,
+            install=True,
+            replace=not args.no_replace,
+            enable=False,
+        ),
+        client,
+    )
+    flow_name = str(value["name"])
+    value["installed"] = True
+    value["started"] = bool(args.start)
+    value["no_supervisor"] = bool(args.no_supervisor)
+    if args.start:
+        value["start_result"] = client.post(
+            f"/api/flows/{quoted(flow_name)}/start"
+        )
+    return value
+
+
 def agent_list(_: argparse.Namespace, client: HutchClient) -> Any:
     return client.get("/api/cao/catalog").get("profiles", [])
 
@@ -394,6 +426,35 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--replace", action="store_true")
     command.add_argument("--enable", action="store_true")
     command.set_defaults(handler=flow_from_template)
+    command = flow_commands.add_parser(
+        "one_run",
+        aliases=["one-run"],
+        help="create and install one recon-to-report audit Flow for a Git checkout",
+    )
+    command.add_argument("project_directory")
+    command.add_argument("--name")
+    command.add_argument("--output")
+    command.add_argument("--compile-output")
+    command.add_argument("--cao-repo", default=str(DEFAULT_CAO_REPO))
+    command.add_argument("--skill-root", action="append", default=[])
+    command.add_argument("--strict-skills", action="store_true")
+    command.add_argument("--provider", choices=("codex", "opencode_cli"))
+    command.add_argument(
+        "--no-replace",
+        action="store_true",
+        help="fail instead of replacing an existing CAO Flow with the same name",
+    )
+    command.add_argument(
+        "--start",
+        action="store_true",
+        help="start the installed Flow immediately",
+    )
+    command.add_argument(
+        "--no-supervisor",
+        action="store_true",
+        help="use the direct recon/planning entry Agent instead of a dedicated supervisor profile",
+    )
+    command.set_defaults(handler=flow_one_run)
 
     agent = groups.add_parser("agent", help="inspect and customize agent profiles")
     agent_commands = agent.add_subparsers(dest="command", required=True)

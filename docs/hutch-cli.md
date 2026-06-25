@@ -69,6 +69,32 @@ Compilation does not install unless `--install` is present. Installed schedules 
 CAO-native template flows support `codex` and `opencode_cli`; choose one with
 `flow from-template --provider`.
 
+Create and install the standard recon → planning → dimension audits → final
+report Flow with one command:
+
+```sh
+./bin/hutch flow one_run /path/to/repo --provider codex
+./bin/hutch flow one_run /path/to/repo --provider codex --start
+```
+
+The command compiles and installs the `one-run` template, replaces an existing
+same-name Flow by default, and leaves its schedule disabled. Use `--no-replace`
+to reject an existing name.
+
+Use `--no-supervisor` to install the direct CAO-owned variant:
+
+```sh
+./bin/hutch flow one_run /path/to/repo \
+  --provider codex \
+  --no-supervisor \
+  --start
+```
+
+This variant has no generated `*-supervisor` profile. Its `recon-planner`
+entry Agent performs recon and planning, then conditionally launches the
+preinstalled Java, Web, C/C++, Python, and Reverse auditors. Planning must
+record a validated `run` or `skip` decision for every domain.
+
 ## Runtime data layout
 
 Mutable Hutch data is stored below `~/.hutch` by default:

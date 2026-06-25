@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import sys
 
@@ -82,6 +83,83 @@ class HutchCliTests(unittest.TestCase):
 
         self.assertEqual(client.calls[0][:2], ("POST", "/api/flows/audit/start"))
         self.assertEqual(client.calls[1][:2], ("POST", "/api/runs/run-1/stop"))
+
+    def test_flow_one_run_compiles_installs_and_optionally_starts(self):
+        client = FakeClient()
+        args = argparse.Namespace(
+            project_directory="/tmp/target",
+            name="target-security-review",
+            output=None,
+            compile_output=None,
+            cao_repo="/tmp/cao",
+            skill_root=[],
+            strict_skills=False,
+            provider="codex",
+            no_replace=False,
+            start=True,
+            no_supervisor=False,
+        )
+        with mock.patch.object(
+            CLI,
+            "flow_from_template",
+            return_value={"ok": True, "name": "target-security-review"},
+        ) as render:
+            value = CLI.flow_one_run(args, client)
+
+        forwarded = render.call_args.args[0]
+        self.assertEqual(forwarded.template, "one-run")
+        self.assertTrue(forwarded.compile)
+        self.assertTrue(forwarded.install)
+        self.assertTrue(forwarded.replace)
+        self.assertEqual(forwarded.provider, "codex")
+        self.assertTrue(value["installed"])
+        self.assertTrue(value["started"])
+        self.assertEqual(
+            client.calls[-1][:2],
+            ("POST", "/api/flows/target-security-review/start"),
+        )
+
+    def test_flow_one_run_command_parses_project_directory(self):
+        args = CLI.build_parser().parse_args(
+            [
+                "flow",
+                "one_run",
+                "/tmp/target",
+                "--provider",
+                "codex",
+                "--no-supervisor",
+            ]
+        )
+
+        self.assertIs(args.handler, CLI.flow_one_run)
+        self.assertEqual(args.project_directory, "/tmp/target")
+        self.assertEqual(args.provider, "codex")
+        self.assertTrue(args.no_supervisor)
+
+    def test_flow_one_run_no_supervisor_selects_direct_template(self):
+        client = FakeClient()
+        args = argparse.Namespace(
+            project_directory="/tmp/target",
+            name=None,
+            output=None,
+            compile_output=None,
+            cao_repo="/tmp/cao",
+            skill_root=[],
+            strict_skills=False,
+            provider="codex",
+            no_replace=False,
+            start=False,
+            no_supervisor=True,
+        )
+        with mock.patch.object(
+            CLI,
+            "flow_from_template",
+            return_value={"ok": True, "name": "target-one-run-direct"},
+        ) as render:
+            value = CLI.flow_one_run(args, client)
+
+        self.assertEqual(render.call_args.args[0].template, "one-run-no-supervisor")
+        self.assertTrue(value["no_supervisor"])
 
     def test_project_open_resolves_path_and_preserves_operator_metadata(self):
         client = FakeClient()

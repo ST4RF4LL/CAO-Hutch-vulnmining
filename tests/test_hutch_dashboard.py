@@ -619,6 +619,14 @@ class HutchDashboardTests(unittest.TestCase):
                 super().__init__("http://127.0.0.1:1")
                 self.requests = []
 
+            def _session_terminal_ids(self, session_name):
+                return set()
+
+            def _guard_codex_flow_trust_prompt(
+                self, session_name, existing_ids, stop, timeout=90.0
+            ):
+                return
+
             def _request(self, method, path, params=None, timeout=30.0):
                 self.requests.append((method, path, params))
                 return {"id": "created"}
@@ -636,6 +644,60 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertEqual(
             gateway.requests[1][2]["working_directory"], str(self.target.resolve())
         )
+
+    def test_cao_flow_start_accepts_new_codex_conductor_trust_prompt(self):
+        class RecordingGateway(CaoGateway):
+            def __init__(self):
+                super().__init__("http://127.0.0.1:1")
+                self.requests = []
+
+            def _request(self, method, path, params=None, timeout=30.0):
+                self.requests.append((method, path, params))
+                if path == "/terminals/term-1":
+                    return {"id": "term-1", "provider": "codex"}
+                if path == "/terminals/term-1/output":
+                    return {
+                        "output": "Do you trust the files in this folder?\n2. No, quit"
+                    }
+                return {"success": True}
+
+        gateway = RecordingGateway()
+
+        accepted = gateway._accept_codex_trust_prompt("term-1")
+
+        self.assertTrue(accepted)
+        self.assertEqual(
+            gateway.requests[-1],
+            ("POST", "/terminals/term-1/key", {"key": "Enter"}),
+        )
+
+    def test_hutch_normalizes_codex_minutes_spinner_false_completed(self):
+        output = (
+            "• Confirmed candidates with full source-to-sink traceability: "
+            "(2m 29s • esc to interrupt)"
+        )
+
+        status = CaoGateway._effective_terminal_status(
+            "codex", "completed", output
+        )
+
+        self.assertEqual(status, "processing")
+
+    def test_hutch_normalizes_codex_background_terminal_false_completed(self):
+        status = CaoGateway._effective_terminal_status(
+            "codex",
+            "completed",
+            "Confirmed · 1 background terminal running · /ps to view",
+        )
+
+        self.assertEqual(status, "processing")
+
+    def test_hutch_preserves_real_codex_completed_status(self):
+        status = CaoGateway._effective_terminal_status(
+            "codex", "completed", "• Final answer\n\n›"
+        )
+
+        self.assertEqual(status, "completed")
 
     def test_cao_active_sessions_normalizes_session_records(self):
         class RecordingGateway(CaoGateway):

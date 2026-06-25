@@ -263,6 +263,45 @@ class CaoNativeFlowTests(unittest.TestCase):
             params={"key": "Enter"},
         )
 
+    def test_codex_trust_guard_records_terminal_before_accepting_prompt(self):
+        discovered_ids = set()
+        requests = []
+
+        def request(method, path, **kwargs):
+            requests.append((method, path, kwargs))
+            if path == "/sessions/test-session/terminals":
+                return [
+                    {
+                        "id": "new-worker",
+                        "agent_profile": "reporter-profile",
+                    }
+                ]
+            if path == "/terminals/new-worker/output":
+                return {"output": "Do you trust the files in this folder?"}
+            if path == "/terminals/new-worker/key":
+                return {"success": True}
+            raise AssertionError((method, path, kwargs))
+
+        with mock.patch.object(ASSIGN, "_request", side_effect=request):
+            ASSIGN._guard_codex_trust_prompt(
+                "test-session",
+                set(),
+                "reporter-profile",
+                discovered_ids,
+                ASSIGN.threading.Event(),
+                1,
+            )
+
+        self.assertEqual(discovered_ids, {"new-worker"})
+        self.assertIn(
+            (
+                "POST",
+                "/terminals/new-worker/key",
+                {"params": {"key": "Enter"}},
+            ),
+            requests,
+        )
+
     def test_non_codex_assignment_does_not_accept_workspace_trust_prompt(self):
         with mock.patch.object(ASSIGN, "_request") as request:
             accepted = ASSIGN._accept_codex_trust_prompt(
@@ -273,6 +312,73 @@ class CaoNativeFlowTests(unittest.TestCase):
 
         self.assertFalse(accepted)
         request.assert_not_called()
+
+    def test_codex_assignment_cleans_terminal_discovered_before_create_failure(self):
+        class ImmediateThread:
+            def __init__(self, *, target, args, daemon):
+                self.target = target
+                self.args = args
+
+            def start(self):
+                self.target(*self.args)
+
+            def join(self, timeout=None):
+                return None
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "run"
+            workspace = run_dir / "agents/reporter/workspace"
+            inbox = run_dir / "inbox"
+            workspace.mkdir(parents=True)
+            inbox.mkdir()
+            task_path = inbox / "T-1.task.json"
+            task_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "hutch.task.v1",
+                        "run_directory": str(run_dir),
+                        "agent_profile": "reporter-profile",
+                        "agent_cell": {
+                            "id": "reporter",
+                            "profile": "reporter-profile",
+                            "provider": "codex",
+                            "workspace": str(workspace),
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            requests = []
+
+            def request(method, path, **kwargs):
+                requests.append((method, path))
+                if path == "/terminals/supervisor":
+                    return {"session_name": "test-session"}
+                if path == "/sessions/test-session/terminals" and method == "GET":
+                    return []
+                if path == "/sessions/test-session/terminals" and method == "POST":
+                    raise ASSIGN.AssignError("create request failed before returning id")
+                if path == "/terminals/orphan" and method == "DELETE":
+                    return {"success": True}
+                raise AssertionError((method, path, kwargs))
+
+            def discover(session, existing_ids, profile, discovered_ids, stop, timeout):
+                discovered_ids.add("orphan")
+
+            with mock.patch.dict(os.environ, {"CAO_TERMINAL_ID": "supervisor"}):
+                with mock.patch.object(ASSIGN, "_request", side_effect=request):
+                    with mock.patch.object(
+                        ASSIGN, "_guard_codex_trust_prompt", side_effect=discover
+                    ):
+                        with mock.patch.object(
+                            ASSIGN.threading, "Thread", ImmediateThread
+                        ):
+                            with self.assertRaisesRegex(
+                                ASSIGN.AssignError, "create request failed"
+                            ):
+                                ASSIGN.assign(task_path, 10)
+
+            self.assertIn(("DELETE", "/terminals/orphan"), requests)
 
     def test_stage_validation_advances_only_valid_contract(self):
         stage = {
@@ -323,6 +429,85 @@ class CaoNativeFlowTests(unittest.TestCase):
             self.assertTrue(result["ok"])
             state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["stages"]["audit"]["status"], "done")
+
+    def test_domain_plan_skip_writes_durable_stage_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary)
+            for name in ("artifacts", "outbox"):
+                (run_dir / name).mkdir()
+            workflow = {
+                "stages": [
+                    {
+                        "id": "planning",
+                        "task_id": "D-0002",
+                        "agent": "planner",
+                        "depends_on": [],
+                        "artifact": "artifacts/plan.md",
+                    },
+                    {
+                        "id": "java-audit",
+                        "task_id": "D-0101",
+                        "agent": "java",
+                        "depends_on": ["planning"],
+                        "artifact": "artifacts/java.md",
+                        "required_sections": [
+                            "Scope and Method",
+                            "Evidence and Limitations",
+                        ],
+                        "domain_condition": {
+                            "domain": "java",
+                            "plan_artifact": "artifacts/domain-plan.json",
+                        },
+                    },
+                ]
+            }
+            state = {
+                "run_id": "direct-run",
+                "status": "running",
+                "stages": {
+                    "planning": {"status": "done"},
+                    "java-audit": {"status": "pending"},
+                },
+            }
+            (run_dir / "workflow.json").write_text(
+                json.dumps(workflow), encoding="utf-8"
+            )
+            (run_dir / "state.json").write_text(
+                json.dumps(state), encoding="utf-8"
+            )
+            (run_dir / "events.jsonl").write_text("", encoding="utf-8")
+            (run_dir / "artifacts/domain-plan.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "hutch.domain-audit-plan.v1",
+                        "decisions": [
+                            {
+                                "domain": "java",
+                                "action": "skip",
+                                "reason": "No Java or JVM artifacts were discovered.",
+                                "evidence": ["shared/repository-inventory.json"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = STATE.skip_stage(run_dir, "java-audit")
+
+            self.assertEqual(result["action"], "skip")
+            updated = json.loads(
+                (run_dir / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(updated["stages"]["java-audit"]["skipped"])
+            evidence = json.loads(
+                (run_dir / "outbox/D-0101.result.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["findings"], [])
+            self.assertIn(
+                "## Scope and Method",
+                (run_dir / "artifacts/java.md").read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ class WorkflowTemplateTests(unittest.TestCase):
             [item["id"] for item in templates],
             [
                 "information-collection",
+                "one-run-no-supervisor",
                 "one-run",
                 "security-knowledge-one-run",
                 "security-knowledge-recon",
@@ -67,16 +68,75 @@ class WorkflowTemplateTests(unittest.TestCase):
                 [
                     "repository-intelligence",
                     "threat-intelligence",
+                    "audit-planning",
                     "attack-surface-mining",
                     "implementation-mining",
-                    "component-supplychain-mining",
                     "finding-validation",
                     "final-report",
                 ],
             )
-            self.assertEqual([len(batch) for batch in batches], [1, 1, 3, 1, 1])
+            self.assertEqual(
+                [len(batch) for batch in batches],
+                [1, 1, 1, 2, 1, 1],
+            )
+            self.assertNotIn(
+                "component-supplychain-miner",
+                {agent["id"] for agent in validated["agents"]},
+            )
+            planning = next(
+                stage
+                for stage in validated["stages"]
+                if stage["id"] == "audit-planning"
+            )
+            self.assertEqual(
+                planning["audit_plan_contract"]["artifact"],
+                "artifacts/one-run/audit-plan.json",
+            )
             self.assertIn("repository-analyst", removed)
             self.assertNotIn("/" + "Users/", json.dumps(validated))
+
+    def test_direct_one_run_has_no_supervisor_and_all_domain_profiles(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = self.create_repository(root)
+            workflow, _, _ = TEMPLATE.instantiate_template(
+                "one-run-no-supervisor",
+                repository,
+                name="target-direct",
+                cao_repo=root,
+                skill_roots=[],
+                provider="codex",
+            )
+            workflow_path = root / "target-direct.json"
+            atomic_json(workflow_path, workflow)
+            validated = GENERATOR.load_and_validate(workflow_path)
+            output = root / "bundle"
+            manifest = GENERATOR.write_output(
+                workflow_path, validated, output, root
+            )
+
+            self.assertTrue(validated["execution"]["no_supervisor"])
+            self.assertIsNone(manifest["supervisor_profile"])
+            self.assertEqual(manifest["entry_profile"], "target-direct-recon-planner")
+            self.assertFalse(
+                (output / "profiles/target-direct-supervisor.md").exists()
+            )
+            profile_names = {Path(path).stem for path in manifest["profiles"]}
+            self.assertTrue(
+                {
+                    "target-direct-java-auditor",
+                    "target-direct-web-auditor",
+                    "target-direct-c-auditor",
+                    "target-direct-python-auditor",
+                    "target-direct-reverse-auditor",
+                    "target-direct-report-writer",
+                }
+                <= profile_names
+            )
+            flow = Path(manifest["flow"]).read_text(encoding="utf-8")
+            self.assertIn("agent_profile: target-direct-recon-planner", flow)
+            self.assertIn("hutch_flow_state.py\" decision", flow)
+            self.assertIn("hutch_flow_state.py\" skip", flow)
 
     def test_one_run_template_can_target_codex(self):
         with tempfile.TemporaryDirectory() as temporary:

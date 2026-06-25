@@ -326,6 +326,13 @@ def task_document(stage: dict[str, Any], run_dir: Path) -> dict[str, Any]:
             "task_required_fields": ["id", "module_ids", "paths", "skills"],
             "completeness_rule": "the union of task.module_ids must equal every id in the module inventory",
         }
+    if stage.get("domain_plan_contract"):
+        document["domain_plan_contract"] = {
+            **stage["domain_plan_contract"],
+            "schema": "hutch.domain-audit-plan.v1",
+            "allowed_actions": ["run", "skip"],
+            "decision_required_fields": ["domain", "action", "reason", "evidence"],
+        }
     if stage.get("json_contracts"):
         document["json_contracts"] = stage["json_contracts"]
     if stage.get("report_consistency"):
@@ -429,6 +436,42 @@ def validate_result(stage: dict[str, Any], run_dir: Path) -> tuple[bool, str]:
             )
         except (OSError, json.JSONDecodeError, AdaptiveAuditError) as error:
             return False, f"audit plan is invalid: {error}"
+    if stage.get("domain_plan_contract"):
+        contract = stage["domain_plan_contract"]
+        try:
+            plan = json.loads(
+                (run_dir / contract["artifact"]).read_text(encoding="utf-8")
+            )
+            if plan.get("schema") != "hutch.domain-audit-plan.v1":
+                raise ValueError("unexpected schema")
+            decisions = plan.get("decisions")
+            if not isinstance(decisions, list):
+                raise ValueError("decisions must be an array")
+            expected = list(contract["domains"])
+            indexed: dict[str, dict[str, Any]] = {}
+            for decision in decisions:
+                if not isinstance(decision, dict):
+                    raise ValueError("each decision must be an object")
+                domain = decision.get("domain")
+                if domain in indexed:
+                    raise ValueError(f"duplicate domain decision: {domain}")
+                if domain not in expected:
+                    raise ValueError(f"unknown domain decision: {domain}")
+                if decision.get("action") not in {"run", "skip"}:
+                    raise ValueError(f"invalid action for {domain}")
+                if not str(decision.get("reason", "")).strip():
+                    raise ValueError(f"missing reason for {domain}")
+                evidence = decision.get("evidence")
+                if not isinstance(evidence, list):
+                    raise ValueError(f"evidence must be an array for {domain}")
+                if decision.get("action") == "skip" and not evidence:
+                    raise ValueError(f"skip decision requires evidence for {domain}")
+                indexed[str(domain)] = decision
+            missing = [domain for domain in expected if domain not in indexed]
+            if missing:
+                raise ValueError(f"missing domain decisions: {missing}")
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+            return False, f"domain audit plan is invalid: {error}"
     if stage.get("report_consistency"):
         contract = stage["report_consistency"]
         try:
