@@ -469,7 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.set_defaults(handler=flow_compile)
     command = flow_commands.add_parser(
         "from-template",
-        help="render a generic workflow template for one target Git checkout",
+        help="render a generic workflow template for one target project",
     )
     command.add_argument("target")
     command.add_argument("--template", default="one-run")
@@ -488,7 +488,7 @@ def build_parser() -> argparse.ArgumentParser:
     command = flow_commands.add_parser(
         "one_run",
         aliases=["one-run"],
-        help="create and install one recon-to-report audit Flow for a Git checkout",
+        help="create and install one recon-to-report audit Flow for a target project",
     )
     command.add_argument("project_directory")
     command.add_argument("--name")

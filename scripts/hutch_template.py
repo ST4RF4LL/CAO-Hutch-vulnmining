@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instantiate generic Hutch workflow templates for a concrete Git checkout."""
+"""Instantiate generic Hutch workflow templates for a concrete target project."""
 
 from __future__ import annotations
 
@@ -196,8 +196,6 @@ def instantiate_template(
     target = expand_config_path(target)
     if not target.is_dir():
         raise TemplateError(f"target is not a directory: {target}")
-    if not (target / ".git").exists():
-        raise TemplateError(f"target is not a Git checkout: {target}")
     resolved_cao = cao_repo.expanduser().resolve() if cao_repo else default_cao_repo()
     configured_roots = (
         [*default_skill_roots(), *template_skill_roots(source)]
@@ -242,7 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list built-in workflow templates")
 
-    render = commands.add_parser("render", help="render one template for a Git checkout")
+    render = commands.add_parser("render", help="render one template for a target project")
     render.add_argument("target", type=Path)
     render.add_argument("--template", default="one-run")
     render.add_argument("--name")

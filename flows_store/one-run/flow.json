@@ -5,13 +5,9 @@
   "name_suffix": "one-run",
   "description": "Single CAO flow combining repository reconnaissance, threat modeling, audit planning, dimension-based vulnerability mining, validation, and reporting.",
   "workflow": {
-    "description": "One-run audit for a Git checkout: collect repository intelligence, model threats, plan complete coverage, audit security dimensions, validate findings, and produce a final report.",
+    "description": "One-run audit for a target project: collect repository intelligence, model threats, plan complete coverage, audit security dimensions, validate findings, and produce a final report.",
     "schedule": "0 0 1 1 *",
     "provider": "opencode_cli",
-    "snapshot": {
-      "max_file_bytes": 2097152,
-      "analysis": "structural"
-    },
     "execution": {
       "stage_timeout_seconds": 1800,
       "max_attempts": 2,
@@ -115,7 +111,7 @@
         ],
         "inputs": [
           "shared/source-fingerprint.json",
-          "shared/snapshot-manifest.json",
+          "shared/target-project.json",
           "shared/repository-inventory.json",
           "shared/modules.json"
         ],

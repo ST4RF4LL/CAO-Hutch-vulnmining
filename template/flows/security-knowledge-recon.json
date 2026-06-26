@@ -3,7 +3,7 @@
   "id": "security-knowledge-recon",
   "version": "1.0.0",
   "name_suffix": "security-recon",
-  "description": "Security-knowledge information collection flow for a target Git checkout.",
+  "description": "Security-knowledge information collection flow for a target project.",
   "skill_roots": [
     "$SECKNOWLEDGE_SKILL_ROOT",
     "$HACK_SKILLS_ROOT",
@@ -14,10 +14,6 @@
     "description": "Collects target classification, attack surface, and security-knowledge routing intelligence.",
     "schedule": "0 0 1 1 *",
     "provider": "opencode_cli",
-    "snapshot": {
-      "max_file_bytes": 2097152,
-      "analysis": "structural"
-    },
     "execution": {
       "stage_timeout_seconds": 1800,
       "max_attempts": 2,
@@ -46,7 +42,7 @@
         "depends_on": [],
         "artifact": "artifacts/security-knowledge/00-target-classification.md",
         "required_artifacts": ["artifacts/security-knowledge/target-classification.json"],
-        "inputs": ["shared/source-fingerprint.json", "shared/snapshot-manifest.json", "shared/repository-inventory.json", "shared/modules.json"],
+        "inputs": ["shared/source-fingerprint.json", "shared/target-project.json", "shared/repository-inventory.json", "shared/modules.json"],
         "required_sections": ["Target Type and Attack Surface", "Skill Routing Matrix", "Track Selection", "Evidence and Limitations"],
         "objective": "Classify target security domains and produce a machine-readable security-knowledge routing matrix.",
         "json_contracts": [

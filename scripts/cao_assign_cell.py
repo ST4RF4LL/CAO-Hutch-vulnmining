@@ -230,7 +230,7 @@ def assign(task_path: Path, ready_timeout: float) -> dict[str, Any]:
         message = (
             f"Execute task {task_path}. Read the JSON contract exactly. "
             "Write the requested Markdown artifact, then write the result JSON last. "
-            "The source snapshot is immutable."
+            "Do not modify the target project."
         )
         sent = _request(
             "POST",

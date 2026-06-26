@@ -249,6 +249,71 @@ class CaoNativeFlowTests(unittest.TestCase):
             self.assertIsNone(cells["reviewer"]["opencode_config"])
             self.assertFalse((workspace / ".opencode/opencode.json").exists())
 
+    def test_native_prepare_uses_target_project_without_snapshot(self):
+        prepare_native = load_script("prepare_native_flow_run")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "target"
+            target.mkdir()
+            (target / "README.md").write_text("target project\n", encoding="utf-8")
+            profile_dir = root / "profiles"
+            profile_dir.mkdir()
+            profile = profile_dir / "demo-reviewer.md"
+            profile.write_text(
+                "---\n"
+                "name: demo-reviewer\n"
+                "description: reviewer\n"
+                "allowedTools:\n"
+                "  - fs_read\n"
+                "  - fs_list\n"
+                "---\n\n"
+                "# Reviewer\n",
+                encoding="utf-8",
+            )
+            workflow = {
+                "schema": "hutch.cao-workflow.v1",
+                "name": "demo",
+                "provider": "opencode_cli",
+                "target": str(target),
+                "agents": [
+                    {
+                        "id": "reviewer",
+                        "description": "Reviewer",
+                        "mission": "Review target.",
+                        "skills": [],
+                    }
+                ],
+                "stages": [
+                    {
+                        "id": "review",
+                        "task_id": "T-1",
+                        "agent": "reviewer",
+                        "depends_on": [],
+                        "artifact": "artifacts/review.md",
+                        "objective": "Review target.",
+                    }
+                ],
+            }
+            workflow_path = root / "workflow.json"
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+
+            with mock.patch.object(prepare_native, "hutch_runs_dir", return_value=root / "runs"):
+                result = prepare_native.prepare(workflow_path, profile_dir)
+
+            output = result["output"]
+            run_dir = Path(output["run_dir"])
+            self.assertNotIn("target_snapshot", output)
+            self.assertEqual(output["target"], str(target.resolve()))
+            self.assertFalse((run_dir / "shared/target-snapshot").exists())
+            self.assertFalse((run_dir / "shared/snapshot-manifest.json").exists())
+            self.assertTrue((run_dir / "shared/target-project.json").is_file())
+            manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertNotIn("target_snapshot", manifest)
+            self.assertEqual(manifest["target"], str(target.resolve()))
+            task = json.loads((run_dir / "inbox/T-1.task.json").read_text(encoding="utf-8"))
+            self.assertEqual(task["target"]["type"], "target_project")
+            self.assertEqual(task["target"]["path"], str(target.resolve()))
+
     def test_codex_assignment_waits_for_mcp_startup_to_settle(self):
         states = iter(
             [

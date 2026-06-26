@@ -256,9 +256,9 @@ allowedTools:
 # Hutch execution contract
 
 - Read the absolute task JSON path in the CAO handoff message before doing anything else.
-- Treat `shared/target-snapshot/` as immutable. Never modify the original target checkout or the snapshot.
+- Read target source from the absolute `target.path` declared in the task JSON. Never modify the target project.
 - Do not use the network, run builds, execute tests, load models, or execute target code. This flow is static analysis only.
-- Read only from the run directory and write only the requested artifact, `outbox/<task-id>.result.json`, and temporary files below `tmp/`.
+- Read only from the run directory and the declared target project. Write only the requested artifact, `outbox/<task-id>.result.json`, and temporary files below `tmp/`.
 - Read every declared input. Cite repository-relative paths, exact symbols, and line numbers in evidence.
 - Distinguish source-proven behavior, reasonable inference, and missing deployment or runtime facts.
 - The artifact must contain every exact `##` heading listed in `acceptance.required_sections`.
@@ -342,7 +342,7 @@ You are the deterministic supervisor of a CAO-owned Rabbit Hutch flow. CAO creat
 - Codex may report a CAO terminal as `completed` while a long-running turn still shows a minutes-form progress spinner or background terminal. Never advance, delete, or retry from CAO terminal status; only the Hutch result-file gate below is authoritative.
 - On validation failure, delete the failed terminal and assign the same task once more with the validation error. Never invent, repair, or silently accept a worker artifact.
 - Stop on the second failure and leave the state and evidence intact for diagnosis.
-- Never modify the original target checkout or `shared/target-snapshot/`.
+- Never modify the target project.
 - Do not delete the CAO session or worker evidence. CAO owns runtime lifecycle.
 """
 
@@ -387,7 +387,6 @@ Read these files first:
 
 - manifest: `[[manifest]]`
 - durable state: `[[state_file]]`
-- immutable source snapshot: `[[target_snapshot]]`
 
 Before the first batch, run:
 
@@ -458,7 +457,7 @@ script: ./{prepare_script_name}
 You are the recon and planning Agent for this workflow, not a separate
 Supervisor profile. Hutch prepared run `[[run_id]]` at `[[run_dir]]`.
 
-Read `[[manifest]]`, `[[state_file]]`, and `[[target_snapshot]]`, then run:
+Read `[[manifest]]` and `[[state_file]]`, then run:
 
 `export HUTCH_REPO="${{HUTCH_REPO:-{repo_default}}}"`
 
@@ -610,6 +609,7 @@ def install_bundle(manifest: dict[str, Any], cao_repo: Path, replace: bool, disa
                 profile_path,
                 profile_path.stem,
                 policies[profile_path.stem],
+                extra_read_roots=[workflow["target"]],
             )
     name = manifest["workflow"]
     if replace:

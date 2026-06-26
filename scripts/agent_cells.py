@@ -100,7 +100,11 @@ def _parse_profile_source(profile_source: Path) -> tuple[str, list[str], str]:
     return description, allowed_tools, body.lstrip("\n")
 
 
-def _opencode_permissions(allowed_tools: list[str], skill_rules: dict[str, str]) -> dict[str, Any]:
+def _opencode_permissions(
+    allowed_tools: list[str],
+    skill_rules: dict[str, str],
+    extra_read_roots: Iterable[str | Path] = (),
+) -> dict[str, Any]:
     if "*" in allowed_tools:
         permissions: dict[str, Any] = {
             name: "allow"
@@ -149,10 +153,14 @@ def _opencode_permissions(allowed_tools: list[str], skill_rules: dict[str, str])
     # CAO loads its managed agent definition after project-local OpenCode
     # config. Keep the durable Hutch run tree usable even when that later
     # profile layer wins over a Cell's exact per-run external-directory rule.
-    permissions["external_directory"] = {
+    external_directory = {
         "*": "deny",
         HUTCH_RUNS_GLOB: "allow",
     }
+    for root in extra_read_roots:
+        root_path = expand_config_path(root)
+        external_directory[f"{root_path.resolve()}/*"] = "allow"
+    permissions["external_directory"] = external_directory
     # Agent Cells carry their own copied skills. Prevent a worker from escaping
     # that boundary through the globally configured skill-loader MCP.
     permissions["agent-skill-loader_*"] = "deny"
@@ -164,9 +172,10 @@ def write_opencode_agent(
     profile: str,
     profile_source: Path,
     skill_rules: dict[str, str],
+    extra_read_roots: Iterable[str | Path] = (),
 ) -> Path:
     description, allowed_tools, body = _parse_profile_source(profile_source)
-    permissions = _opencode_permissions(allowed_tools, skill_rules)
+    permissions = _opencode_permissions(allowed_tools, skill_rules, extra_read_roots)
     agent_path.parent.mkdir(parents=True, exist_ok=True)
     agent_path.write_text(
         "---\n"
@@ -186,6 +195,7 @@ def install_opencode_agent_policy(
     profile: str,
     cell_skills: Iterable[tuple[str, Iterable[str]]],
     agents_dir: Path = OPENCODE_AGENTS_DIR,
+    extra_read_roots: Iterable[str | Path] = (),
 ) -> Path:
     """Replace a CAO-installed OpenCode agent with Hutch's compiled skill policy."""
     return write_opencode_agent(
@@ -193,6 +203,7 @@ def install_opencode_agent_policy(
         profile,
         profile_source.resolve(),
         skill_permission_rules(cell_skills),
+        extra_read_roots,
     )
 
 
@@ -310,6 +321,18 @@ def _ensure_run_links(workspace: Path, run_dir: Path) -> None:
         link.symlink_to(relative_target, target_is_directory=True)
 
 
+def _external_directory_rules(workflow: dict[str, Any], run_dir: Path) -> dict[str, str]:
+    rules = {
+        "*": "deny",
+        f"{run_dir.resolve()}/*": "allow",
+    }
+    target = workflow.get("target")
+    if target:
+        target_path = expand_config_path(str(target))
+        rules[f"{target_path.resolve()}/*"] = "allow"
+    return rules
+
+
 def prepare_agent_cells(
     workflow: dict[str, Any], run_dir: Path, specs: Iterable[dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
@@ -320,6 +343,7 @@ def prepare_agent_cells(
     if provider not in SUPPORTED_PROVIDERS:
         raise AgentCellError(f"unsupported Agent Cell provider: {provider}")
     catalogs = resolve_cell_skill_sources(workflow, specs)
+    external_directory = _external_directory_rules(workflow, run_dir)
     cells: dict[str, dict[str, Any]] = {}
     for spec in specs:
         cell_id = str(spec["id"])
@@ -367,6 +391,7 @@ def prepare_agent_cells(
                 profile,
                 profile_source,
                 rules,
+                [workflow["target"]] if workflow.get("target") else (),
             )
         config_path: Path | None = None
         if provider == "opencode_cli":
@@ -379,12 +404,7 @@ def prepare_agent_cells(
                         profile: {
                             "permission": {
                                 "skill": rules,
-                                # Cell links resolve outside the workspace but stay
-                                # inside this immutable/durable run boundary.
-                                "external_directory": {
-                                    "*": "deny",
-                                    f"{run_dir.resolve()}/*": "allow",
-                                },
+                                "external_directory": external_directory,
                                 "agent-skill-loader_*": "deny",
                             }
                         }

@@ -3,7 +3,7 @@
   "id": "security-knowledge-threat-model",
   "version": "1.0.0",
   "name_suffix": "security-threats",
-  "description": "Security-knowledge threat-modeling flow for a target Git checkout.",
+  "description": "Security-knowledge threat-modeling flow for a target project.",
   "skill_roots": [
     "$SECKNOWLEDGE_SKILL_ROOT",
     "$HACK_SKILLS_ROOT",
@@ -14,10 +14,6 @@
     "description": "Builds source-grounded security hypotheses and audit-track plans using secknowledge-skill and hack-skills methodology.",
     "schedule": "0 0 1 1 *",
     "provider": "opencode_cli",
-    "snapshot": {
-      "max_file_bytes": 2097152,
-      "analysis": "structural"
-    },
     "execution": {
       "stage_timeout_seconds": 1800,
       "max_attempts": 2,

@@ -8,10 +8,6 @@
     "description": "Builds complete repository architecture, business-flow, external-interface, and module intelligence.",
     "schedule": "0 0 1 1 *",
     "provider": "opencode_cli",
-    "snapshot": {
-      "max_file_bytes": 2097152,
-      "analysis": "structural"
-    },
     "execution": {
       "stage_timeout_seconds": 1800,
       "max_attempts": 2,
@@ -45,7 +41,7 @@
         ],
         "inputs": [
           "shared/source-fingerprint.json",
-          "shared/snapshot-manifest.json",
+          "shared/target-project.json",
           "shared/repository-inventory.json",
           "shared/modules.json"
         ],

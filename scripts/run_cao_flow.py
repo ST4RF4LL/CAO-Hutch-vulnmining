@@ -150,6 +150,38 @@ def source_fingerprint(target: Path) -> dict[str, Any]:
     }
 
 
+def target_reference_inventories(target: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    source = str(target.resolve())
+    repository = {
+        "schema": "hutch.repository-inventory.v1",
+        "source": source,
+        "inventory_mode": "target-reference",
+        "file_count": 0,
+        "source_file_count": 0,
+        "bytes": 0,
+        "languages": {},
+        "module_count": 1,
+    }
+    inventory = {
+        "schema": "hutch.module-inventory.v1",
+        "source": source,
+        "inventory_mode": "target-reference",
+        "module_count": 1,
+        "modules": [
+            {
+                "id": "root",
+                "path": ".",
+                "source_file_count": 0,
+                "tracked_file_count": 0,
+                "bytes": 0,
+                "languages": {},
+                "build_descriptors": [],
+            }
+        ],
+    }
+    return repository, inventory
+
+
 def should_copy(path: Path, size: int, max_file_bytes: int) -> bool:
     return size <= max_file_bytes and (
         path.suffix.lower() in TEXT_SUFFIXES
@@ -192,10 +224,21 @@ def create_snapshot(source: Path, destination: Path, max_file_bytes: int) -> dic
     }
 
 
-def prepare_shared_contracts(workflow: dict[str, Any], run_dir: Path) -> None:
+def prepare_shared_contracts(
+    workflow: dict[str, Any],
+    run_dir: Path,
+    source: Path | None = None,
+    *,
+    scan_source: bool = True,
+) -> None:
     """Create deterministic inventory and safely import upstream campaign artifacts."""
     shared = run_dir / "shared"
-    repository, modules = build_inventories(shared / "target-snapshot")
+    source = source or shared / "target-snapshot"
+    repository, modules = (
+        build_inventories(source)
+        if scan_source
+        else target_reference_inventories(source)
+    )
     atomic_json(shared / "repository-inventory.json", repository)
     atomic_json(shared / "modules.json", modules)
     audit_plan = workflow.get("audit_plan")
@@ -282,17 +325,26 @@ def load_workflow(path: Path) -> dict[str, Any]:
     return workflow
 
 
-def task_document(stage: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+def task_document(stage: dict[str, Any], run_dir: Path, target: Path | None = None) -> dict[str, Any]:
+    target_value = (
+        {
+            "type": "target_project",
+            "path": str(target.resolve()),
+            "read_only": True,
+        }
+        if target is not None
+        else {
+            "type": "source_snapshot",
+            "path": "shared/target-snapshot",
+            "immutable": True,
+        }
+    )
     document = {
         "schema": "hutch.task.v1",
         "task_id": stage["task_id"],
         "stage": stage["id"],
         "objective": stage["objective"],
-        "target": {
-            "type": "source_snapshot",
-            "path": "shared/target-snapshot",
-            "immutable": True,
-        },
+        "target": target_value,
         "inputs": stage.get("inputs", []),
         "outputs": {
             "artifact": stage["artifact"],

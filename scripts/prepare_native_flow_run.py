@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare one immutable Hutch run for a CAO-native flow script."""
+"""Prepare one Hutch run for a CAO-native flow script."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from typing import Any
 from agent_cells import prepare_agent_cells
 from run_cao_flow import (
     atomic_json,
-    create_snapshot,
     now,
     prepare_shared_contracts,
     source_fingerprint,
@@ -44,22 +43,24 @@ def unique_run_dir(workflow_name: str) -> Path:
 def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, Any]:
     workflow = load_workflow(workflow_path.resolve())
     target = expand_config_path(workflow["target"])
-    if not (target / ".git").exists():
-        raise ValueError(f"target is not a Git checkout: {target}")
+    if not target.is_dir():
+        raise ValueError(f"target is not a directory: {target}")
 
     run_dir = unique_run_dir(workflow["name"])
     for directory in ("artifacts", "inbox", "outbox", "shared", "tmp"):
         (run_dir / directory).mkdir(parents=True, exist_ok=False)
 
     fingerprint = source_fingerprint(target)
-    snapshot = create_snapshot(
-        target,
-        run_dir / "shared" / "target-snapshot",
-        int(workflow.get("snapshot", {}).get("max_file_bytes", 2_097_152)),
-    )
     atomic_json(run_dir / "shared" / "source-fingerprint.json", fingerprint)
-    atomic_json(run_dir / "shared" / "snapshot-manifest.json", snapshot)
-    prepare_shared_contracts(workflow, run_dir)
+    atomic_json(
+        run_dir / "shared" / "target-project.json",
+        {
+            "schema": "hutch.target-project.v1",
+            "path": str(target.resolve()),
+            "read_only": True,
+        },
+    )
+    prepare_shared_contracts(workflow, run_dir, target, scan_source=False)
     atomic_json(run_dir / "workflow.json", workflow)
 
     generated_profiles = {
@@ -85,7 +86,7 @@ def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, 
         ),
     )
     for stage in workflow["stages"]:
-        document = task_document(stage, run_dir)
+        document = task_document(stage, run_dir, target)
         document["agent_profile"] = generated_profiles[stage["agent"]]
         document["agent_cell"] = cells[stage["agent"]]
         document["finding_contract"] = {
@@ -120,7 +121,7 @@ def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, 
         "cao_flow": workflow["name"],
         "cao_session": f"cao-flow-{workflow['name']}",
         "target_fingerprint": fingerprint,
-        "snapshot": snapshot,
+        "target": str(target.resolve()),
         "campaign": workflow.get("campaign"),
         "stages": {
             stage["id"]: {
@@ -153,7 +154,7 @@ def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, 
         "run_dir": str(run_dir),
         "workflow": str(run_dir / "workflow.json"),
         "state_file": str(run_dir / "state.json"),
-        "target_snapshot": str(run_dir / "shared" / "target-snapshot"),
+        "target": str(target.resolve()),
         "agent_cells": cells,
         "campaign": workflow.get("campaign"),
         "stages": [
@@ -177,7 +178,7 @@ def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, 
             "run_dir": str(run_dir),
             "manifest": str(run_dir / "manifest.json"),
             "state_file": str(run_dir / "state.json"),
-            "target_snapshot": str(run_dir / "shared" / "target-snapshot"),
+            "target": str(target.resolve()),
         },
     }
 
