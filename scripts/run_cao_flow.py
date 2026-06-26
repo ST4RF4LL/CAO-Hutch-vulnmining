@@ -8,7 +8,6 @@ dependencies. CAO remains an external runtime; this runner never edits its check
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -145,13 +144,9 @@ def execute(
 
 
 def source_fingerprint(target: Path) -> dict[str, Any]:
-    status = execute(["git", "status", "--porcelain=v1"], cwd=target).stdout
-    head = execute(["git", "rev-parse", "HEAD"], cwd=target).stdout.strip()
     return {
         "target": str(target.resolve()),
-        "head": head,
-        "status_sha256": hashlib.sha256(status.encode()).hexdigest(),
-        "status_path_count": len(status.splitlines()),
+        "method": "path-only",
     }
 
 
