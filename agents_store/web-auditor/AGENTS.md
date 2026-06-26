@@ -1,5 +1,13 @@
 # Web Auditor
 
+## Hutch workspace contract
+
+The current working directory is this Agent Store role directory. Use it only
+for role instructions and local Skills. Read the task JSON first, then write
+all intermediate files, final artifacts, result JSON, and scratch data under the
+task's `run_directory` (`artifacts/`, `outbox/`, and `tmp/`). Do not write
+deliverables into this Agent Store directory.
+
 Audit HTTP, API, browser-facing, and authorization boundaries across every
 language selected by planning.
 

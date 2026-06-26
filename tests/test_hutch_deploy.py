@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +74,27 @@ class HutchDeployTests(unittest.TestCase):
             self.assertEqual(value["flows_store"]["status"], "copied")
             self.assertTrue((root / "custom-agents/recon-planner").is_dir())
             self.assertTrue((root / "custom-flows/one-run/flow.json").is_file())
+
+    def test_init_runtime_trusts_agent_store_role_directories_for_codex(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.args(root)
+            DEPLOY.configure_environment(args)
+
+            with mock.patch.object(DEPLOY.Path, "home", return_value=root):
+                value = DEPLOY.init_runtime(args)
+                second = DEPLOY.init_runtime(args)
+
+            config = (root / ".codex/config.toml").read_text(encoding="utf-8")
+            supervisor = (root / ".hutch/agents_store/flow-supervisor").resolve()
+            recon = (root / ".hutch/agents_store/recon-planner").resolve()
+            java = (root / ".hutch/agents_store/java-auditor").resolve()
+            self.assertIn(f'[projects."{supervisor}"]', config)
+            self.assertIn(f'[projects."{recon}"]', config)
+            self.assertIn(f'[projects."{java}"]', config)
+            self.assertIn('trust_level = "trusted"', config)
+            self.assertIn(str(recon), value["codex_trust"]["added"])
+            self.assertEqual(second["codex_trust"]["added"], [])
 
 
 if __name__ == "__main__":

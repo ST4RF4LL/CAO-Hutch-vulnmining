@@ -56,7 +56,7 @@ class CaoNativeFlowTests(unittest.TestCase):
             self.assertIn("scripts/cao_assign_cell.py", flow)
             self.assertIn("Do not substitute CAO MCP `assign`", flow)
             self.assertIn(
-                "workspace `[[run_dir]]/agents/java-auditor/workspace`", flow
+                "workspace from task JSON `agent_cell.workspace`", flow
             )
             self.assertNotIn('working_directory="[[run_dir]]"', flow)
             self.assertEqual(len(manifest["profiles"]), 8)
@@ -134,7 +134,11 @@ class CaoNativeFlowTests(unittest.TestCase):
             self.assertEqual(rules, {"*": "deny", "architect-common-review": "allow"})
             self.assertEqual(
                 permissions["external_directory"],
-                {"*": "deny", f"{run_dir.resolve()}/*": "allow"},
+                {
+                    "*": "deny",
+                    f"{run_dir.resolve()}/*": "allow",
+                    f"{architect.resolve()}/*": "allow",
+                },
             )
             self.assertEqual(permissions["agent-skill-loader_*"], "deny")
             self.assertEqual(
@@ -249,6 +253,51 @@ class CaoNativeFlowTests(unittest.TestCase):
             self.assertIsNone(cells["reviewer"]["opencode_config"])
             self.assertFalse((workspace / ".opencode/opencode.json").exists())
 
+    def test_agent_store_workspace_relinks_between_runs_and_assigns(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = root / "agents_store"
+            workspace = store / "reviewer"
+            workspace.mkdir(parents=True)
+            profile = root / "profile.md"
+            profile.write_text(
+                "---\nname: reviewer\ndescription: Reviewer\nallowedTools:\n"
+                "  - fs_read\n---\n\n# Reviewer\n",
+                encoding="utf-8",
+            )
+            runs = [root / "run-1", root / "run-2"]
+            with mock.patch.object(CELLS, "hutch_agents_store", return_value=store.resolve()):
+                for run_dir in runs:
+                    for name in CELLS.CELL_LINKS:
+                        (run_dir / name).mkdir(parents=True)
+                    cells = CELLS.prepare_agent_cells(
+                        {"provider": "codex", "skill_roots": []},
+                        run_dir,
+                        [
+                            {
+                                "id": "reviewer",
+                                "profile": "reviewer-profile",
+                                "skills": [],
+                                "profile_source": profile,
+                                "agent_store": str(workspace),
+                            }
+                        ],
+                    )
+            self.assertEqual((workspace / "inbox").resolve(), (runs[-1] / "inbox").resolve())
+            task = {
+                "schema": "hutch.task.v1",
+                "run_directory": str(runs[-1]),
+                "agent_profile": "reviewer-profile",
+                "agent_cell": cells["reviewer"],
+            }
+            task_path = runs[-1] / "inbox/T-1.task.json"
+            task_path.write_text(json.dumps(task), encoding="utf-8")
+
+            _, _, loaded_workspace, profile_name = ASSIGN._load_contract(task_path)
+
+            self.assertEqual(loaded_workspace, workspace.resolve())
+            self.assertEqual(profile_name, "reviewer-profile")
+
     def test_native_prepare_uses_target_project_without_snapshot(self):
         prepare_native = load_script("prepare_native_flow_run")
         with tempfile.TemporaryDirectory() as temporary:
@@ -256,6 +305,7 @@ class CaoNativeFlowTests(unittest.TestCase):
             target = root / "target"
             target.mkdir()
             (target / "README.md").write_text("target project\n", encoding="utf-8")
+            agents_store_root = root / "agents_store"
             profile_dir = root / "profiles"
             profile_dir.mkdir()
             profile = profile_dir / "demo-reviewer.md"
@@ -281,6 +331,7 @@ class CaoNativeFlowTests(unittest.TestCase):
                         "description": "Reviewer",
                         "mission": "Review target.",
                         "skills": [],
+                        "agent_store": str(agents_store_root / "reviewer"),
                     }
                 ],
                 "stages": [
@@ -296,9 +347,15 @@ class CaoNativeFlowTests(unittest.TestCase):
             }
             workflow_path = root / "workflow.json"
             workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+            agent_store = agents_store_root / "reviewer"
+            agent_store.mkdir(parents=True)
 
             with mock.patch.object(prepare_native, "hutch_runs_dir", return_value=root / "runs"):
-                result = prepare_native.prepare(workflow_path, profile_dir)
+                with mock.patch("agent_cells.hutch_agents_store", return_value=agents_store_root.resolve()):
+                    with mock.patch.object(
+                        CELLS, "hutch_agents_store", return_value=agents_store_root.resolve()
+                    ):
+                        result = prepare_native.prepare(workflow_path, profile_dir)
 
             output = result["output"]
             run_dir = Path(output["run_dir"])
@@ -310,9 +367,18 @@ class CaoNativeFlowTests(unittest.TestCase):
             manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
             self.assertNotIn("target_snapshot", manifest)
             self.assertEqual(manifest["target"], str(target.resolve()))
+            self.assertEqual(
+                manifest["agent_cells"]["reviewer"]["workspace"],
+                str(agent_store.resolve()),
+            )
+            self.assertEqual(
+                manifest["agent_cells"]["reviewer"]["runtime_workspace"],
+                str((run_dir / "agents/reviewer/workspace").resolve()),
+            )
             task = json.loads((run_dir / "inbox/T-1.task.json").read_text(encoding="utf-8"))
             self.assertEqual(task["target"]["type"], "target_project")
             self.assertEqual(task["target"]["path"], str(target.resolve()))
+            self.assertEqual(task["constraints"]["write_root"], str(run_dir))
 
     def test_codex_assignment_waits_for_mcp_startup_to_settle(self):
         states = iter(
@@ -430,8 +496,28 @@ class CaoNativeFlowTests(unittest.TestCase):
             run_dir = Path(temporary) / "run"
             workspace = run_dir / "agents/reporter/workspace"
             inbox = run_dir / "inbox"
+            for name in ("artifacts", "outbox", "shared", "tmp"):
+                (run_dir / name).mkdir(parents=True)
             workspace.mkdir(parents=True)
             inbox.mkdir()
+            for name in ASSIGN.CELL_LINKS:
+                (workspace / name).symlink_to(
+                    os.path.relpath(run_dir / name, workspace),
+                    target_is_directory=True,
+                )
+            cell_dir = run_dir / "agents/reporter"
+            (cell_dir / "cell.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "hutch.agent-cell.v1",
+                        "id": "reporter",
+                        "profile": "reporter-profile",
+                        "cell_dir": str(cell_dir.resolve()),
+                        "workspace": str(workspace.resolve()),
+                    }
+                ),
+                encoding="utf-8",
+            )
             task_path = inbox / "T-1.task.json"
             task_path.write_text(
                 json.dumps(

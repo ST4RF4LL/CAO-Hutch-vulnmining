@@ -1,0 +1,29 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "implementation-miner",
+  "description": "Mines implementation-level flaws across language and runtime boundaries.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "c-cpp-memory-safety-review",
+    "c-cpp-native-boundary-review",
+    "c-cpp-file-privilege-review",
+    "audit-skills"
+  ],
+  "provenance": {
+    "instructions": [
+      "flows_store/one-run/flow.json",
+      "template/flows/vulnerability-mining.json"
+    ],
+    "skills_sources": [
+      "../opencode_multi_agents/.opencode/skills",
+      "third_party/skills"
+    ],
+    "skills_license": "MIT",
+    "skill_licenses": {
+      "audit-skills": "NOASSERTION"
+    }
+  }
+}

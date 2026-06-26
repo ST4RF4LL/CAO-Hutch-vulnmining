@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import threading
 import time
 import urllib.error
@@ -48,6 +49,7 @@ CODEX_BACKGROUND_RUNNING_RE = re.compile(
 ANSI_ESCAPE_RE = re.compile(
     r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
 )
+TEMPLATE_VAR_RE = re.compile(r"\[\[(\w+)\]\]")
 
 
 class CaoGatewayError(RuntimeError):
@@ -241,7 +243,160 @@ class CaoGateway:
                 pass
             stop.wait(0.25)
 
+    @staticmethod
+    def _parse_flow_file(path: Path) -> tuple[dict[str, str], str]:
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            return {}, text
+        try:
+            raw_metadata, body = text.split("---", 2)[1:]
+        except ValueError as error:
+            raise CaoGatewayError(f"invalid Flow frontmatter: {path}") from error
+        metadata: dict[str, str] = {}
+        for raw_line in raw_metadata.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, separator, raw_value = line.partition(":")
+            if not separator:
+                continue
+            value = raw_value.strip()
+            if value.startswith('"') and value.endswith('"'):
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    value = value.strip('"')
+            elif value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            metadata[key.strip()] = value
+        return metadata, body.lstrip("\n")
+
+    @staticmethod
+    def _render_template(template: str, values: dict[str, Any]) -> str:
+        missing = sorted(set(TEMPLATE_VAR_RE.findall(template)) - set(values))
+        if missing:
+            raise CaoGatewayError(
+                f"Flow script output is missing template variables: {missing}"
+            )
+
+        def replace(match: re.Match[str]) -> str:
+            return str(values[match.group(1)])
+
+        return TEMPLATE_VAR_RE.sub(replace, template)
+
+    def _start_hutch_native_flow(self, name: str, flow: dict[str, Any]) -> Any | None:
+        if not flow.get("file_path"):
+            return None
+        file_path = Path(str(flow.get("file_path", ""))).expanduser()
+        if not file_path.is_file():
+            return None
+        metadata, prompt_template = self._parse_flow_file(file_path)
+        working_directory = metadata.get("working_directory")
+        if not working_directory:
+            return None
+        workspace = Path(working_directory).expanduser().resolve()
+        if not workspace.is_dir():
+            raise CaoGatewayError(
+                f"Flow working directory does not exist: {workspace}",
+                HTTPStatus.BAD_REQUEST,
+            )
+        script = str(flow.get("script") or metadata.get("script") or "")
+        output = {"execute": True, "output": {}}
+        if script:
+            script_path = Path(script)
+            if not script_path.is_absolute():
+                script_path = file_path.parent / script_path
+            if not script_path.is_file():
+                raise CaoGatewayError(
+                    f"Flow prepare script does not exist: {script_path}",
+                    HTTPStatus.BAD_REQUEST,
+                )
+            try:
+                result = subprocess.run(
+                    [str(script_path)],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=600,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise CaoGatewayError(
+                    f"Flow prepare script timed out: {script_path}",
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                ) from error
+            if result.returncode:
+                raise CaoGatewayError(
+                    f"Flow prepare script failed ({result.returncode}): {result.stderr.strip()}",
+                    HTTPStatus.BAD_GATEWAY,
+                )
+            try:
+                output = json.loads(result.stdout)
+            except json.JSONDecodeError as error:
+                raise CaoGatewayError(
+                    f"Flow prepare script returned invalid JSON: {error}",
+                    HTTPStatus.BAD_GATEWAY,
+                ) from error
+        if not output.get("execute"):
+            return {"executed": False}
+        payload = output.get("output")
+        if not isinstance(payload, dict):
+            raise CaoGatewayError("Flow script output must be an object")
+        prompt = self._render_template(prompt_template, payload)
+        session_name = f"cao-flow-{name}"
+        existing_ids = self._session_terminal_ids(session_name)
+        if existing_ids:
+            try:
+                self._request(
+                    "DELETE",
+                    f"/sessions/{urllib.parse.quote(session_name, safe='')}",
+                    timeout=60.0,
+                )
+            except CaoGatewayError as error:
+                if error.status != HTTPStatus.NOT_FOUND:
+                    raise
+            existing_ids = set()
+        stop = threading.Event()
+        guard = threading.Thread(
+            target=self._guard_codex_flow_trust_prompt,
+            args=(session_name, existing_ids, stop),
+            daemon=True,
+        )
+        guard.start()
+        try:
+            terminal = self._request(
+                "POST",
+                "/sessions",
+                {
+                    "provider": str(flow.get("provider") or metadata.get("provider") or "opencode_cli"),
+                    "agent_profile": str(flow.get("agent_profile") or metadata.get("agent_profile")),
+                    "session_name": session_name.removeprefix("cao-"),
+                    "working_directory": str(workspace),
+                },
+                timeout=180.0,
+            )
+        finally:
+            stop.set()
+            guard.join(timeout=1.0)
+        terminal_id = str(terminal.get("id", ""))
+        if not terminal_id:
+            raise CaoGatewayError("CAO did not return a conductor terminal id")
+        self._request(
+            "POST",
+            f"/terminals/{urllib.parse.quote(terminal_id, safe='')}/input",
+            {"message": prompt},
+            timeout=30.0,
+        )
+        return {"executed": True, "terminal": terminal, "working_directory": str(workspace)}
+
     def _start_flow(self, name: str) -> Any:
+        try:
+            flow = self._request("GET", f"/flows/{urllib.parse.quote(name, safe='')}")
+            result = self._start_hutch_native_flow(name, flow)
+            if result is not None:
+                return result
+        except CaoGatewayError:
+            raise
         session_name = f"cao-flow-{name}"
         existing_ids = self._session_terminal_ids(session_name)
         stop = threading.Event()

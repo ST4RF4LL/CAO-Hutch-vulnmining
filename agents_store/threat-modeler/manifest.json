@@ -1,0 +1,19 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "threat-modeler",
+  "description": "Builds attack-surface, trust-boundary, and threat intelligence.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management"
+  ],
+  "provenance": {
+    "instructions": [
+      "flows_store/one-run/flow.json",
+      "template/flows/threat-modeling.json"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

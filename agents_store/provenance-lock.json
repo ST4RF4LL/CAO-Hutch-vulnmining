@@ -1,9 +1,68 @@
 {
   "schema": "hutch.agent-store-lock.v1",
   "roles": {
+    "attack-surface-miner": {
+      "manifest_sha256": "edf55aca13e1b2e6e191a05ca04b3fdf6faafa045d75b6ce18e63a3afb72f122",
+      "instructions_sha256": "8a64dcd655fb519f631500c90e7538e3397b4e48cffe7e5279cabab167989cab",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "java-injection-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-injection-review",
+          "license": "MIT",
+          "sha256": "2fca225bc6a2f38d91630d51ea5fceaf7cadd66cd536e3c98c6bacc547ff241b"
+        },
+        "java-web-security-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-web-security-review",
+          "license": "MIT",
+          "sha256": "ef5f2cca1b256d1a6154b625595e2a70be7f6487ade357ad4be5ce198a980a2c"
+        },
+        "java-deserialization-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-deserialization-review",
+          "license": "MIT",
+          "sha256": "3afed4fec239b44edd3f3251666d8f5846bcccf65ee23664e11fb88c9b5afdc5"
+        },
+        "audit-skills": {
+          "source": "third_party/skills/audit-skills",
+          "license": "NOASSERTION",
+          "sha256": "9b23401ce8fd161a5ac105e974636eee7a666e51d38e5e89e8c57510c60d189f"
+        }
+      }
+    },
+    "audit-planner": {
+      "manifest_sha256": "3435604eea8c260f2e9fa80f1a312187df0e4d0470e8e6473029800640ed9d60",
+      "instructions_sha256": "144b3169a135ca4f85fbdb51f436d441c4bfc102406d88c73700b19d340ad374",
+      "mcp_sha256": "6adc9ccc2d02ad51b48253db4b01c7fc2a1cfc72a69d7eed8a7d2c6c2c104a6a",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "audit-skills": {
+          "source": "third_party/skills/audit-skills",
+          "license": "NOASSERTION",
+          "sha256": "9b23401ce8fd161a5ac105e974636eee7a666e51d38e5e89e8c57510c60d189f"
+        }
+      }
+    },
     "c-auditor": {
       "manifest_sha256": "61f6aa12e262d932a07a627a455024ad362243c499cbcb0c1ed4670bacc37e3c",
-      "instructions_sha256": "77a2a5ebc7d468f89ebf61a802e9034677c256eb2cb6cdb10b1449f5330d81d6",
+      "instructions_sha256": "ee722246fda1e0943d5405c7484819a00540f91cceadafec6ecae8f0bfa633ba",
       "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
       "skills": {
         "secure-code-review-common": {
@@ -33,9 +92,74 @@
         }
       }
     },
+    "finding-validator": {
+      "manifest_sha256": "a83ea037636a459b19adf0eabba49c96fc9eb6c4bb8aa0837c6b42ad8c1660b7",
+      "instructions_sha256": "f92f15fa72c5e47fadb77d4508d6e19d7090b3ad033acf0db6be07ccaf218656",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "vulnerability-validation": {
+          "source": "../opencode_multi_agents/.opencode/skills/vulnerability-validator-subagent/vulnerability-validation",
+          "license": "MIT",
+          "sha256": "559df47011214368d86a0046dd5bbb72828141ce64a9b17e6a452fb0c11d24a6"
+        }
+      }
+    },
+    "flow-supervisor": {
+      "manifest_sha256": "36581ef0c339b5243cc65d7ee00176ccfa2ec6044087b84f2b3dfd5ccce4c304",
+      "instructions_sha256": "6e894938a4bfb1f42e936a5a0fbf1cbe3a3f8b9e10e2851ab37d53bbd889dfaf",
+      "mcp_sha256": "6adc9ccc2d02ad51b48253db4b01c7fc2a1cfc72a69d7eed8a7d2c6c2c104a6a",
+      "skills": {}
+    },
+    "implementation-miner": {
+      "manifest_sha256": "e991b9a6dd6484a1c58fbb1437521bbbc574125f63a9292b9b7e5b2fb680b319",
+      "instructions_sha256": "722c29a5e9f38e17ad8391257cff4cd2a16a4f0841cb4aed03aad5bf042a7fad",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "c-cpp-memory-safety-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/c-cpp-subagent/c-cpp-memory-safety-review",
+          "license": "MIT",
+          "sha256": "a708ad5d7d30e2ef3766b4f17f868619e41a388b2f96db8eba3a941f02eed741"
+        },
+        "c-cpp-native-boundary-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/c-cpp-subagent/c-cpp-native-boundary-review",
+          "license": "MIT",
+          "sha256": "8e88b86080d07f155fb86f35285d08e163ea1b4658125512dfcc3fc337f71ce8"
+        },
+        "c-cpp-file-privilege-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/c-cpp-subagent/c-cpp-file-privilege-review",
+          "license": "MIT",
+          "sha256": "f4c34b4d4d2a654403b540546ef55cfc2dd43915fbe63d9d0fe81cb790230ff8"
+        },
+        "audit-skills": {
+          "source": "third_party/skills/audit-skills",
+          "license": "NOASSERTION",
+          "sha256": "9b23401ce8fd161a5ac105e974636eee7a666e51d38e5e89e8c57510c60d189f"
+        }
+      }
+    },
     "java-auditor": {
       "manifest_sha256": "365d9565f67069ed73b16cb53a361cf90b75c615723bab4d9d4f361fdf12347a",
-      "instructions_sha256": "a8b892951ccb03f9e5ec435d8e65ba4efc157913c3c045c71a81616fc46aa752",
+      "instructions_sha256": "d8828610b306684dbc90857a7afd5f851491a6620fe324aef5a5e066f11348b6",
       "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
       "skills": {
         "secure-code-review-common": {
@@ -67,7 +191,7 @@
     },
     "python-auditor": {
       "manifest_sha256": "129a55d6af24cd4c8d5eefd03be97d4fbe1a999136ea19d38faac229dcf4165f",
-      "instructions_sha256": "1d241e046627f240aa302ac62da1c2e78b7a401874a7a3039d12586a798b810f",
+      "instructions_sha256": "897d7b7d4c21cb11a134097eecc13b4b953f5ebd90b2b062c47b961cd9ea0a93",
       "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
       "skills": {
         "secure-code-review-common": {
@@ -104,7 +228,7 @@
     },
     "recon-planner": {
       "manifest_sha256": "902d0a8a852c46e848396cd58ce9cc699c4f53e7ee60fd042e19097541e4a471",
-      "instructions_sha256": "83b87ea6e4d7f479228c846143336e4172832c916f6ef94291937f5d616020b0",
+      "instructions_sha256": "0d2cebc1c23866a081c986bebf7425ef2d4173cd3f2a4c965b663973253a0035",
       "mcp_sha256": "91a2346604e3380b3ed283aef717ff3ade25aa8152f51808d68721be16935c84",
       "skills": {
         "secure-code-review-common": {
@@ -126,7 +250,7 @@
     },
     "report-writer": {
       "manifest_sha256": "00af28a66c812014159959f0e8140e0de0770cfba6416b02e49d39f127f213bf",
-      "instructions_sha256": "5938a34b1f45ceb8b63d0df9249c597f0b1b4cc10eba4ea1d5df42b0e52a5632",
+      "instructions_sha256": "8c069cafe1f7dbdaffee070070cb1b303db65ef0e23dfaf663b64c8b8b724fde",
       "mcp_sha256": "6adc9ccc2d02ad51b48253db4b01c7fc2a1cfc72a69d7eed8a7d2c6c2c104a6a",
       "skills": {
         "secure-code-review-common": {
@@ -141,9 +265,48 @@
         }
       }
     },
+    "repository-analyst": {
+      "manifest_sha256": "42cfbb1035654995bfd1d95dde4f7c95ddc743dea792d9f4486900f4db703297",
+      "instructions_sha256": "d2e8c4849a096549fe4fd150c5f082c21747a739d8444a0ae03f29991ecf5a52",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "audit-skills": {
+          "source": "third_party/skills/audit-skills",
+          "license": "NOASSERTION",
+          "sha256": "9b23401ce8fd161a5ac105e974636eee7a666e51d38e5e89e8c57510c60d189f"
+        }
+      }
+    },
     "reverse-auditor": {
       "manifest_sha256": "78903ace482a148ce0060c0cd8ccaceeb2ac0a1f60092333847051467c551069",
-      "instructions_sha256": "bb5504b4a2b08a1a97e589939fda8d38ce5265dc5341dadb5377d190d4df73b6",
+      "instructions_sha256": "9b4dce08297fae3ce10a20e01c2ece2d0fb3c7c4d396f0c2d655d06faa77f7ba",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        }
+      }
+    },
+    "threat-modeler": {
+      "manifest_sha256": "33ebbd2852fbb630f573aadf905c408ed3cb8405f70488cb21ace122da9b13c2",
+      "instructions_sha256": "068b550f137af63e60f89b5d669f638257283fd5fbedc4a0ea4545af2c84be70",
       "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
       "skills": {
         "secure-code-review-common": {
@@ -160,7 +323,7 @@
     },
     "web-auditor": {
       "manifest_sha256": "ac85e89c8f742284f30ff9810c633a88eda530cab1e152d21e16f589e4acb660",
-      "instructions_sha256": "18abda1686f8d2cdb87e6280a091bcd9162351d26edde65fa9c31f6ffc7eb84e",
+      "instructions_sha256": "92c80f4df0ecee077ed6eab7ca7dd8eb2cf0569d893dc4407a8e1b449051d37f",
       "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
       "skills": {
         "secure-code-review-common": {

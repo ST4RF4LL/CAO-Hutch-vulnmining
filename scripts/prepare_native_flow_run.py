@@ -81,6 +81,7 @@ def prepare(workflow_path: Path, profiles_dir: Path | None = None) -> dict[str, 
                 "skills": agent.get("skills", []),
                 "skill_sources": agent.get("skill_sources", {}),
                 "profile_source": profiles_dir / f"{generated_profiles[agent['id']]}.md",
+                "agent_store": agent.get("agent_store"),
             }
             for agent in workflow["agents"]
         ),

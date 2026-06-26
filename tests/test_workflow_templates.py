@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -173,7 +174,14 @@ class WorkflowTemplateTests(unittest.TestCase):
                 planning["audit_plan_contract"]["artifact"],
                 "artifacts/one-run/audit-plan.json",
             )
-            self.assertIn("repository-analyst", removed)
+            repository_agent = next(
+                agent
+                for agent in validated["agents"]
+                if agent["id"] == "repository-analyst"
+            )
+            self.assertEqual(removed, {})
+            self.assertTrue(repository_agent["agent_store"].endswith("agents_store/repository-analyst"))
+            self.assertEqual(set(repository_agent["skill_sources"]), set(repository_agent["skills"]))
             self.assertNotIn("/" + "Users/", json.dumps(validated))
 
     def test_direct_one_run_has_no_supervisor_and_all_domain_profiles(self):
@@ -192,9 +200,11 @@ class WorkflowTemplateTests(unittest.TestCase):
             atomic_json(workflow_path, workflow)
             validated = GENERATOR.load_and_validate(workflow_path)
             output = root / "bundle"
-            manifest = GENERATOR.write_output(
-                workflow_path, validated, output, root
-            )
+            agents_store = Path(os.environ["HUTCH_HOME"]) / "agents_store"
+            with mock.patch("agent_cells.hutch_agents_store", return_value=agents_store):
+                manifest = GENERATOR.write_output(
+                    workflow_path, validated, output, root
+                )
 
             self.assertTrue(validated["execution"]["no_supervisor"])
             self.assertEqual(removed, {})
@@ -324,7 +334,7 @@ class WorkflowTemplateTests(unittest.TestCase):
 
             with self.assertRaisesRegex(TEMPLATE.TemplateError, "skills not found"):
                 TEMPLATE.instantiate_template(
-                    "one-run",
+                    "security-knowledge-one-run",
                     repository,
                     cao_repo=root,
                     skill_roots=[],

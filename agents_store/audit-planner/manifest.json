@@ -1,0 +1,25 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "audit-planner",
+  "description": "Plans complete security-dimension coverage from repository and threat intelligence.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "audit-skills"
+  ],
+  "provenance": {
+    "instructions": [
+      "flows_store/one-run/flow.json"
+    ],
+    "skills_sources": [
+      "../opencode_multi_agents/.opencode/skills",
+      "third_party/skills"
+    ],
+    "skills_license": "MIT",
+    "skill_licenses": {
+      "audit-skills": "NOASSERTION"
+    }
+  }
+}

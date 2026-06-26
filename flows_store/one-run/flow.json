@@ -17,84 +17,31 @@
     "agents": [
       {
         "id": "repository-analyst",
-        "description": "Maps repository modules, runtime components, business flows, and external interfaces.",
-        "mission": "Use the deterministic module inventory as the completeness boundary. Build architecture, component, business-flow, and external-interface intelligence for every module with source paths and symbols. Do not silently prioritize away low-risk modules and do not claim vulnerabilities.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "audit-skills"
-        ]
+        "store": "agents_store/repository-analyst"
       },
       {
         "id": "threat-modeler",
-        "description": "Builds attack-surface, trust-boundary, and threat intelligence.",
-        "mission": "Derive attacker-controlled sources, assets, trust crossings, dangerous sinks, security controls, abuse cases, and threat hypotheses from complete architecture intelligence. Preserve module IDs and distinguish source evidence, inference, and missing deployment facts.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management"
-        ]
+        "store": "agents_store/threat-modeler"
       },
       {
         "id": "audit-planner",
-        "description": "Plans complete security-dimension coverage from repository and threat intelligence.",
-        "mission": "Read the complete module inventory, architecture, attack surface, trust boundaries, and threat model. Produce a bounded audit plan that assigns every module to one or more coherent security dimensions, prioritizes threat-linked paths, preserves negative coverage obligations, and never silently omits a module.",
-        "atlas": false,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "audit-skills"
-        ]
+        "store": "agents_store/audit-planner"
       },
       {
         "id": "attack-surface-miner",
-        "description": "Mines externally reachable and attacker-controlled flows.",
-        "mission": "Audit externally reachable entry points and attacker-controlled data flows for injection, SSRF, deserialization, file/path/archive abuse, command execution, unsafe redirects, authentication, authorization, and security-control bypass. Prove source-to-sink reachability before reporting candidates.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "java-injection-review",
-          "java-web-security-review",
-          "java-deserialization-review",
-          "audit-skills"
-        ]
+        "store": "agents_store/attack-surface-miner"
       },
       {
         "id": "implementation-miner",
-        "description": "Mines implementation-level flaws across language and runtime boundaries.",
-        "mission": "Audit parser, serialization, native/FFI, reflection, dynamic loading, concurrency, state-machine, cryptographic, temporary-file, path, archive, and memory-safety sensitive implementation paths. Preserve negative results and unchecked paths.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "c-cpp-memory-safety-review",
-          "c-cpp-native-boundary-review",
-          "c-cpp-file-privilege-review",
-          "audit-skills"
-        ]
+        "store": "agents_store/implementation-miner"
       },
       {
         "id": "finding-validator",
-        "description": "Validates and deduplicates every candidate finding.",
-        "mission": "Re-read cited source paths, reproduce each static argument, challenge attacker control and reachability, inspect sanitizers and deployment assumptions, deduplicate candidates, and classify each as confirmed, likely, needs-info, or false-positive.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "vulnerability-validation"
-        ]
+        "store": "agents_store/finding-validator"
       },
       {
         "id": "report-writer",
-        "description": "Produces the final evidence-linked first-contact audit report.",
-        "mission": "Synthesize repository intelligence, threat model, validated findings, coverage, attack chains, negative results, limitations, and prioritized remediation. Only confirmed and likely items may appear as report findings; preserve needs-info items as leads and false positives as rejected candidates.",
-        "atlas": false,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management"
-        ]
+        "store": "agents_store/report-writer"
       }
     ],
     "stages": [

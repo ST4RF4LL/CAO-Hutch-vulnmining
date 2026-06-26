@@ -356,6 +356,7 @@ def task_document(stage: dict[str, Any], run_dir: Path, target: Path | None = No
             "no_source_modification": True,
             "no_network": True,
             "no_target_execution": True,
+            "write_root": str(run_dir),
             "write_roots": ["artifacts", "outbox", "tmp"],
         },
         "run_directory": str(run_dir),

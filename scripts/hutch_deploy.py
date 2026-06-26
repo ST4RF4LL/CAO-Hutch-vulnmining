@@ -62,6 +62,45 @@ def atomic_json(path: Path, value: Any) -> None:
     atomic_text(path, json.dumps(value, indent=2, ensure_ascii=False) + "\n")
 
 
+def toml_quoted(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def trusted_codex_projects_for_agents_store(store: Path) -> list[Path]:
+    if not store.is_dir():
+        return []
+    return sorted(
+        path.resolve()
+        for path in store.iterdir()
+        if path.is_dir() and (path / "manifest.json").is_file()
+    )
+
+
+def ensure_codex_trusted_projects(projects: list[Path]) -> dict[str, Any]:
+    config = Path.home() / ".codex" / "config.toml"
+    existing = config.read_text(encoding="utf-8") if config.is_file() else ""
+    text = existing.rstrip()
+    added: list[str] = []
+    existing_count = 0
+    for project in projects:
+        path = str(project.resolve())
+        header = f"[projects.{toml_quoted(path)}]"
+        if header in existing:
+            existing_count += 1
+            continue
+        if text:
+            text += "\n\n"
+        text += f'{header}\ntrust_level = "trusted"'
+        added.append(path)
+    if added or not config.exists():
+        atomic_text(config, text + ("\n" if text else ""))
+    return {
+        "path": str(config),
+        "added": added,
+        "existing": existing_count,
+    }
+
+
 def configure_environment(args: argparse.Namespace) -> None:
     if getattr(args, "hutch_home", None):
         os.environ["HUTCH_HOME"] = str(Path(args.hutch_home).expanduser().resolve())
@@ -261,6 +300,9 @@ def init_runtime(args: argparse.Namespace) -> dict[str, Any]:
         paths["flows_store"],
         "flows store",
     )
+    codex_trust = ensure_codex_trusted_projects(
+        trusted_codex_projects_for_agents_store(paths["agents_store"])
+    )
     env_text = "\n".join(
         [
             f"HUTCH_HOME={paths['home']}",
@@ -281,6 +323,7 @@ def init_runtime(args: argparse.Namespace) -> dict[str, Any]:
         "projects_file": str(paths["projects_file"]),
         "agents_store": agents_store,
         "flows_store": flows_store,
+        "codex_trust": codex_trust,
     }
 
 

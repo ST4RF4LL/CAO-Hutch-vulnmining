@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
-from hutch_paths import expand_config_path, hutch_runs_dir
+from hutch_paths import expand_config_path, hutch_agents_store, hutch_runs_dir
 
 
 CELL_LINKS = ("artifacts", "inbox", "outbox", "shared", "tmp")
@@ -313,18 +313,25 @@ def _ensure_run_links(workspace: Path, run_dir: Path) -> None:
         target = run_dir / name
         relative_target = os.path.relpath(target, workspace)
         if link.is_symlink():
-            if Path(os.path.realpath(link)) != target.resolve():
-                raise AgentCellError(f"Agent Cell link points at the wrong target: {link}")
+            if Path(os.path.realpath(link)) == target.resolve():
+                continue
+            link.unlink()
+            link.symlink_to(relative_target, target_is_directory=True)
             continue
         if link.exists():
             raise AgentCellError(f"Agent Cell link path is occupied: {link}")
         link.symlink_to(relative_target, target_is_directory=True)
 
 
-def _external_directory_rules(workflow: dict[str, Any], run_dir: Path) -> dict[str, str]:
+def _external_directory_rules(
+    workflow: dict[str, Any],
+    run_dir: Path,
+    workspace: Path,
+) -> dict[str, str]:
     rules = {
         "*": "deny",
         f"{run_dir.resolve()}/*": "allow",
+        f"{workspace.resolve()}/*": "allow",
     }
     target = workflow.get("target")
     if target:
@@ -343,14 +350,24 @@ def prepare_agent_cells(
     if provider not in SUPPORTED_PROVIDERS:
         raise AgentCellError(f"unsupported Agent Cell provider: {provider}")
     catalogs = resolve_cell_skill_sources(workflow, specs)
-    external_directory = _external_directory_rules(workflow, run_dir)
     cells: dict[str, dict[str, Any]] = {}
     for spec in specs:
         cell_id = str(spec["id"])
         profile = str(spec["profile"])
         skills = list(spec.get("skills", []))
+        agent_store_value = spec.get("agent_store")
         cell_dir = run_dir / "agents" / cell_id
-        workspace = cell_dir / "workspace"
+        workspace = (
+            expand_config_path(str(agent_store_value))
+            if agent_store_value
+            else cell_dir / "workspace"
+        )
+        if agent_store_value:
+            expected_store = hutch_agents_store().resolve()
+            if expected_store != workspace and expected_store not in workspace.parents:
+                raise AgentCellError(
+                    f"Agent Cell workspace must stay inside agents_store: {workspace}"
+                )
         opencode_dir = workspace / ".opencode"
         agents_dir = opencode_dir / "agents"
         codex_dir = workspace / ".agents"
@@ -361,6 +378,7 @@ def prepare_agent_cells(
         )
         workspace.mkdir(parents=True, exist_ok=True)
         _ensure_run_links(workspace, run_dir)
+        external_directory = _external_directory_rules(workflow, run_dir, workspace)
         if skills_dir.exists():
             shutil.rmtree(skills_dir)
         skills_dir.mkdir(parents=True)
@@ -418,6 +436,7 @@ def prepare_agent_cells(
             "provider": provider,
             "cell_dir": str(cell_dir.resolve()),
             "workspace": str(workspace.resolve()),
+            "runtime_workspace": str((cell_dir / "workspace").resolve()),
             "skills_dir": str(skills_dir.resolve()),
             "opencode_config": str(config_path.resolve()) if config_path else None,
             "opencode_agent": str(local_agent.resolve()) if local_agent else None,

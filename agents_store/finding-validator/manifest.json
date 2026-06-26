@@ -1,0 +1,20 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "finding-validator",
+  "description": "Validates and deduplicates every candidate finding.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "vulnerability-validation"
+  ],
+  "provenance": {
+    "instructions": [
+      "flows_store/one-run/flow.json",
+      "template/flows/vulnerability-mining.json"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

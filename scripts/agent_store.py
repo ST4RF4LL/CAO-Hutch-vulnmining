@@ -21,6 +21,7 @@ from hutch_paths import (
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 ALLOWED_MCP_FIELDS = {"type", "command", "args"}
+UNKNOWN_LICENSE = "NOASSERTION"
 
 
 class AgentStoreError(RuntimeError):
@@ -60,7 +61,7 @@ def _skill_license(skill_file: Path) -> str:
     text = skill_file.read_text(encoding="utf-8")
     match = re.search(r"(?m)^license:\s*['\"]?([^'\"\n]+)['\"]?\s*$", text)
     if not match:
-        raise AgentStoreError(f"copied Skill has no license metadata: {skill_file}")
+        return UNKNOWN_LICENSE
     return match.group(1).strip()
 
 
@@ -144,13 +145,18 @@ def load_agent_store(value: str | Path, expected_id: str | None = None) -> dict[
             f"Agent Store Skill inventory mismatch for {role_id}: "
             f"declared={sorted(declared)}, copied={sorted(catalog)}"
         )
-    expected_license = str(
-        (manifest.get("provenance") or {}).get("skills_license", "")
-    )
-    if not expected_license:
+    provenance = manifest.get("provenance") or {}
+    expected_license = str(provenance.get("skills_license", ""))
+    skill_licenses = provenance.get("skill_licenses", {})
+    if not expected_license and not isinstance(skill_licenses, dict):
         raise AgentStoreError(f"Agent Store has no Skill license evidence: {manifest_path}")
-    for source in catalog.values():
-        if _skill_license(source / "SKILL.md") != expected_license:
+    for skill_name, source in catalog.items():
+        expected = str(skill_licenses.get(skill_name, expected_license))
+        if not expected:
+            raise AgentStoreError(
+                f"Agent Store has no Skill license evidence for {skill_name}: {manifest_path}"
+            )
+        if _skill_license(source / "SKILL.md") != expected:
             raise AgentStoreError(
                 f"Skill license does not match manifest for {source / 'SKILL.md'}"
             )
@@ -196,9 +202,18 @@ def write_provenance_lock(store_root: Path) -> Path:
         role_id = str(manifest["id"])
         materialized = load_agent_store(role_root, expected_id=role_id)
         provenance = manifest.get("provenance") or {}
-        source_root = expand_config_path(str(provenance.get("skills_source", "")))
+        source_roots: list[Path] = []
+        if provenance.get("skills_sources"):
+            sources = provenance["skills_sources"]
+            if not isinstance(sources, list) or not sources:
+                raise AgentStoreError(f"invalid skills_sources for {role_id}")
+            source_roots = [expand_config_path(str(source)) for source in sources]
+        elif provenance.get("skills_source"):
+            source_roots = [expand_config_path(str(provenance["skills_source"]))]
+        else:
+            raise AgentStoreError(f"missing skills provenance source for {role_id}")
         try:
-            source_catalog = discover_skills([source_root])
+            source_catalog = discover_skills(source_roots)
         except AgentCellError as error:
             raise AgentStoreError(str(error)) from error
         skills: dict[str, Any] = {}

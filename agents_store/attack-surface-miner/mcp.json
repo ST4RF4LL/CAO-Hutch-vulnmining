@@ -1,0 +1,12 @@
+{
+  "schema": "hutch.agent-mcp.v1",
+  "servers": {
+    "atlas": {
+      "type": "stdio",
+      "command": "atlas",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

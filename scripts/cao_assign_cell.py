@@ -23,6 +23,7 @@ CODEX_STARTUP_MARKERS = (
     "Starting MCP server",
     "Starting MCP servers",
 )
+CELL_LINKS = ("artifacts", "inbox", "outbox", "shared", "tmp")
 CODEX_TRUST_MARKERS = (
     "allow codex to work in this folder",
     "do you trust the contents of this directory",
@@ -73,8 +74,21 @@ def _load_contract(task_path: Path) -> tuple[dict[str, Any], Path, Path, str]:
     cell = task.get("agent_cell") or {}
     workspace = Path(cell["workspace"]).expanduser().resolve()
     expected_root = run_dir / "agents" / str(cell["id"])
-    if workspace != expected_root / "workspace" or not workspace.is_dir():
+    if not workspace.is_dir():
         raise AssignError(f"invalid or absent Agent Cell workspace: {workspace}")
+    cell_manifest = expected_root / "cell.json"
+    if not cell_manifest.is_file():
+        raise AssignError(f"Agent Cell manifest is absent: {cell_manifest}")
+    manifest = json.loads(cell_manifest.read_text(encoding="utf-8"))
+    if Path(manifest.get("workspace", "")).expanduser().resolve() != workspace:
+        raise AssignError("task Agent Cell workspace does not match manifest")
+    if Path(manifest.get("cell_dir", "")).expanduser().resolve() != expected_root.resolve():
+        raise AssignError("task Agent Cell directory does not match run directory")
+    for name in CELL_LINKS:
+        link = workspace / name
+        target = run_dir / name
+        if not link.is_symlink() or Path(os.path.realpath(link)) != target.resolve():
+            raise AssignError(f"Agent Cell run link is invalid: {link}")
 
     profile = str(task["agent_profile"])
     if profile != cell.get("profile"):

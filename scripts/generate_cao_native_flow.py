@@ -12,13 +12,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agent_store import resolve_agent_store_path
 from agent_cells import (
     AgentCellError,
     install_opencode_agent_policy,
     runtime_skill_name,
     validate_cell_specs,
 )
-from hutch_paths import expand_config_path, expand_config_paths, hutch_generated_dir, repo_relative
+from hutch_paths import (
+    expand_config_path,
+    expand_config_paths,
+    hutch_generated_dir,
+    repo_relative,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -258,7 +264,9 @@ allowedTools:
 - Read the absolute task JSON path in the CAO handoff message before doing anything else.
 - Read target source from the absolute `target.path` declared in the task JSON. Never modify the target project.
 - Do not use the network, run builds, execute tests, load models, or execute target code. This flow is static analysis only.
-- Read only from the run directory and the declared target project. Write only the requested artifact, `outbox/<task-id>.result.json`, and temporary files below `tmp/`.
+- Your working directory may be an Agent Store role directory. Do not write deliverables there.
+- Treat `run_directory` in the task JSON as the only output root. Write every intermediate file, temporary file, required artifact, final artifact, and result JSON below that directory.
+- Read only from the run directory, this Agent Store role directory, and the declared target project. Write only the requested artifact, `outbox/<task-id>.result.json`, and temporary files below `tmp/` inside `run_directory`.
 - Read every declared input. Cite repository-relative paths, exact symbols, and line numbers in evidence.
 - Distinguish source-proven behavior, reasonable inference, and missing deployment or runtime facts.
 - The artifact must contain every exact `##` heading listed in `acceptance.required_sections`.
@@ -347,11 +355,18 @@ You are the deterministic supervisor of a CAO-owned Rabbit Hutch flow. CAO creat
 """
 
 
-def render_flow(workflow: dict[str, Any], prepare_script_name: str) -> str:
+def render_flow(
+    workflow: dict[str, Any],
+    prepare_script_name: str,
+    entry_workspace: Path | None = None,
+) -> str:
     if workflow.get("execution", {}).get("no_supervisor"):
-        return render_no_supervisor_flow(workflow, prepare_script_name)
+        return render_no_supervisor_flow(workflow, prepare_script_name, entry_workspace)
     name = workflow["name"]
     supervisor = f"{name}-supervisor"
+    supervisor_store = str(
+        (entry_workspace or resolve_agent_store_path("agents_store/flow-supervisor")).resolve()
+    )
     timeout = int(workflow.get("execution", {}).get("stage_timeout_seconds", 1800))
     max_attempts = int(workflow.get("execution", {}).get("max_attempts", 2))
     maximum = int(workflow.get("execution", {}).get("max_concurrency", 1))
@@ -367,7 +382,7 @@ def render_flow(workflow: dict[str, Any], prepare_script_name: str) -> str:
                 else "none"
             )
             batch_lines.append(
-                f"- `{stage['id']}`: profile `{profile}`, workspace `[[run_dir]]/agents/{stage['agent']}/workspace`, task `[[run_dir]]/inbox/{stage['task_id']}.task.json`, dependencies: {dependencies}, preflight: {preflight}."
+                f"- `{stage['id']}`: profile `{profile}`, workspace from task JSON `agent_cell.workspace`, task `[[run_dir]]/inbox/{stage['task_id']}.task.json`, dependencies: {dependencies}, preflight: {preflight}."
             )
     stages = "\n".join(batch_lines)
     final_artifact = workflow["stages"][-1]["artifact"]
@@ -377,11 +392,13 @@ name: {name}
 schedule: "{workflow['schedule']}"
 agent_profile: {supervisor}
 provider: {workflow['provider']}
+working_directory: {json.dumps(supervisor_store)}
 script: ./{prepare_script_name}
 ---
 # CAO-native Hutch run
 
 CAO owns this flow and the current session. Hutch prepared run `[[run_id]]` at `[[run_dir]]`.
+Do not rely on your process working directory; use the absolute paths below.
 
 Read these files first:
 
@@ -414,11 +431,23 @@ Your final response must state the run directory, final state, final report path
 
 
 def render_no_supervisor_flow(
-    workflow: dict[str, Any], prepare_script_name: str
+    workflow: dict[str, Any],
+    prepare_script_name: str,
+    entry_workspace: Path | None = None,
 ) -> str:
     name = workflow["name"]
     execution = workflow["execution"]
     entry_agent = str(execution["entry_agent"])
+    entry_store = entry_workspace
+    if entry_store is None:
+        entry_store = next(
+            (
+                expand_config_path(str(agent["agent_store"]))
+                for agent in workflow["agents"]
+                if agent["id"] == entry_agent and agent.get("agent_store")
+            ),
+            hutch_generated_dir() / name / entry_agent,
+        )
     entry_stage_ids = list(execution["entry_stages"])
     stages = {stage["id"]: stage for stage in workflow["stages"]}
     timeout = int(execution.get("stage_timeout_seconds", 1800))
@@ -453,12 +482,14 @@ name: {name}
 schedule: "{workflow['schedule']}"
 agent_profile: {name}-{entry_agent}
 provider: {workflow['provider']}
+working_directory: {json.dumps(str(entry_store.resolve()))}
 script: ./{prepare_script_name}
 ---
 # CAO-owned end-to-end security workflow
 
 You are the direct-flow coordinator for this workflow, not a worker. Hutch
 prepared run `[[run_id]]` at `[[run_dir]]`.
+Do not rely on your process working directory; use the absolute paths below.
 
 Read `[[manifest]]` and `[[state_file]]`, then run:
 
@@ -531,7 +562,9 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
 
     profile_paths: list[Path] = []
     no_supervisor = bool(workflow.get("execution", {}).get("no_supervisor"))
+    entry_workspace: Path | None = None
     if not no_supervisor:
+        entry_workspace = resolve_agent_store_path("agents_store/flow-supervisor")
         supervisor_path = profiles_dir / f"{workflow['name']}-supervisor.md"
         supervisor_path.write_text(
             render_supervisor_profile(workflow, cao_repo), encoding="utf-8"
@@ -558,8 +591,18 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
         encoding="utf-8",
     )
     wrapper_path.chmod(0o755)
+    if no_supervisor:
+        entry_agent = str(workflow["execution"]["entry_agent"])
+        entry_workspace = next(
+            (
+                expand_config_path(str(agent["agent_store"]))
+                for agent in workflow["agents"]
+                if agent["id"] == entry_agent and agent.get("agent_store")
+            ),
+            output / entry_agent,
+        )
     flow_path = output / f"{workflow['name']}.flow.md"
-    flow_path.write_text(render_flow(workflow, wrapper_name), encoding="utf-8")
+    flow_path.write_text(render_flow(workflow, wrapper_name, entry_workspace), encoding="utf-8")
     manifest = {
         "schema": "hutch.cao-bundle.v1",
         "workflow": workflow["name"],

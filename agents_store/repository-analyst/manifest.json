@@ -1,0 +1,26 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "repository-analyst",
+  "description": "Maps repository modules, runtime components, business flows, and external interfaces.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "audit-skills"
+  ],
+  "provenance": {
+    "instructions": [
+      "flows_store/one-run/flow.json",
+      "template/flows/information-collection.json"
+    ],
+    "skills_sources": [
+      "../opencode_multi_agents/.opencode/skills",
+      "third_party/skills"
+    ],
+    "skills_license": "MIT",
+    "skill_licenses": {
+      "audit-skills": "NOASSERTION"
+    }
+  }
+}

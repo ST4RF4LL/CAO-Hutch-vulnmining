@@ -639,11 +639,82 @@ class HutchDashboardTests(unittest.TestCase):
         )
         self.assertEqual(flow["kind"], "flow")
         self.assertEqual(launch["kind"], "agent")
-        self.assertEqual(gateway.requests[0][:2], ("POST", "/flows/audit-flow/run"))
-        self.assertEqual(gateway.requests[1][0:2], ("POST", "/sessions"))
+        self.assertEqual(gateway.requests[0][:2], ("GET", "/flows/audit-flow"))
+        self.assertEqual(gateway.requests[1][:2], ("POST", "/flows/audit-flow/run"))
+        self.assertEqual(gateway.requests[2][0:2], ("POST", "/sessions"))
         self.assertEqual(
-            gateway.requests[1][2]["working_directory"], str(self.target.resolve())
+            gateway.requests[2][2]["working_directory"], str(self.target.resolve())
         )
+
+    def test_cao_flow_start_uses_hutch_native_working_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "agents_store/flow-supervisor"
+            workspace.mkdir(parents=True)
+            flow_file = root / "flow.md"
+            script = root / "prepare.sh"
+            script.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' '{\"execute\": true, \"output\": {\"run_dir\": \"/tmp/run\"}}'\n",
+                encoding="utf-8",
+            )
+            script.chmod(0o755)
+            flow_file.write_text(
+                "---\n"
+                "name: audit-flow\n"
+                "schedule: \"0 0 1 1 *\"\n"
+                "agent_profile: audit-supervisor\n"
+                "provider: codex\n"
+                f"working_directory: \"{workspace}\"\n"
+                f"script: {script}\n"
+                "---\n"
+                "Run [[run_dir]].\n",
+                encoding="utf-8",
+            )
+
+            class RecordingGateway(CaoGateway):
+                def __init__(self):
+                    super().__init__("http://127.0.0.1:1")
+                    self.requests = []
+
+                def _session_terminal_ids(self, session_name):
+                    return set()
+
+                def _guard_codex_flow_trust_prompt(
+                    self, session_name, existing_ids, stop, timeout=90.0
+                ):
+                    return
+
+                def _request(self, method, path, params=None, timeout=30.0):
+                    self.requests.append((method, path, params))
+                    if path == "/flows/audit-flow":
+                        return {
+                            "name": "audit-flow",
+                            "file_path": str(flow_file),
+                            "agent_profile": "audit-supervisor",
+                            "provider": "codex",
+                            "script": str(script),
+                        }
+                    if path == "/sessions":
+                        return {"id": "term-1"}
+                    if path == "/terminals/term-1/input":
+                        return {"success": True}
+                    raise AssertionError((method, path, params))
+
+            gateway = RecordingGateway()
+
+            result = gateway.flow_action("audit-flow", "start")
+
+            self.assertTrue(result["result"]["executed"])
+            self.assertEqual(gateway.requests[1][0:2], ("POST", "/sessions"))
+            self.assertEqual(
+                gateway.requests[1][2]["working_directory"], str(workspace.resolve())
+            )
+            self.assertEqual(
+                gateway.requests[2],
+                ("POST", "/terminals/term-1/input", {"message": "Run /tmp/run.\n"}),
+            )
+            self.assertNotIn(("POST", "/flows/audit-flow/run", None), gateway.requests)
 
     def test_cao_flow_start_accepts_new_codex_conductor_trust_prompt(self):
         class RecordingGateway(CaoGateway):

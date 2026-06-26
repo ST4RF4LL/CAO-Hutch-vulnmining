@@ -1,0 +1,15 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "flow-supervisor",
+  "description": "Coordinates Hutch-native CAO flows without producing audit artifacts itself.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [],
+  "provenance": {
+    "instructions": [
+      "scripts/generate_cao_native_flow.py"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}
