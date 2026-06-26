@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -13,12 +14,15 @@ from typing import Any
 
 from adaptive_audit import atomic_json
 from agent_cells import AgentCellError, discover_skills
+from agent_store import AgentStoreError, load_agent_store
 from hutch_paths import (
     config_relative,
+    default_flows_store_source,
     default_cao_repo,
     default_skill_roots,
     expand_config_path,
     expand_config_paths,
+    hutch_flows_store,
     hutch_workflows_dir,
     repo_relative,
 )
@@ -45,14 +49,32 @@ def template_path(template: str) -> Path:
     path = Path(template)
     if path.is_file():
         return path.resolve()
+    for store_root in flow_store_roots():
+        store_candidate = store_root / template / "flow.json"
+        if store_candidate.is_file():
+            return store_candidate.resolve()
     candidate = TEMPLATE_ROOT / f"{template}.json"
     if candidate.is_file():
         return candidate.resolve()
     raise TemplateError(f"template not found: {template}")
 
 
+def flow_store_roots() -> list[Path]:
+    runtime_store = hutch_flows_store()
+    if os.environ.get("HUTCH_FLOWS_STORE"):
+        return [runtime_store]
+    if runtime_store.exists():
+        return [runtime_store, default_flows_store_source()]
+    return [default_flows_store_source()]
+
+
 def load_template(template: str) -> tuple[Path, dict[str, Any]]:
     path = template_path(template)
+    return load_template_file(path)
+
+
+def load_template_file(path: Path) -> tuple[Path, dict[str, Any]]:
+    path = path.resolve()
     value = json.loads(path.read_text(encoding="utf-8"))
     if value.get("schema") != "hutch.cao-workflow-template.v1":
         raise TemplateError(f"unsupported template schema: {path}")
@@ -64,12 +86,12 @@ def load_template(template: str) -> tuple[Path, dict[str, Any]]:
     return path, value
 
 
-def list_templates() -> list[dict[str, Any]]:
-    if not TEMPLATE_ROOT.is_dir():
-        return []
+def template_summaries(paths_by_id: dict[str, Path]) -> list[dict[str, Any]]:
     values = []
-    for path in sorted(TEMPLATE_ROOT.glob("*.json")):
-        _, template = load_template(str(path))
+    for path in [
+        paths_by_id[key] for key in sorted(paths_by_id, key=lambda item: f"{item}.json")
+    ]:
+        _, template = load_template_file(path)
         workflow = template["workflow"]
         values.append(
             {
@@ -83,12 +105,48 @@ def list_templates() -> list[dict[str, Any]]:
     return values
 
 
+def list_templates() -> list[dict[str, Any]]:
+    paths_by_id: dict[str, Path] = {}
+    for store_root in reversed(flow_store_roots()):
+        if not store_root.is_dir():
+            continue
+        for path in sorted(store_root.glob("*/flow.json")):
+            _, template = load_template_file(path)
+            paths_by_id[template["id"]] = path
+    if TEMPLATE_ROOT.is_dir():
+        for path in sorted(TEMPLATE_ROOT.glob("*.json")):
+            _, template = load_template_file(path)
+            paths_by_id.setdefault(template["id"], path)
+    return template_summaries(paths_by_id)
+
+
+def list_store_templates() -> list[dict[str, Any]]:
+    paths_by_id: dict[str, Path] = {}
+    for store_root in reversed(flow_store_roots()):
+        if not store_root.is_dir():
+            continue
+        for path in sorted(store_root.glob("*/flow.json")):
+            _, template = load_template_file(path)
+            paths_by_id[template["id"]] = path
+    return template_summaries(paths_by_id)
+
+
 def requested_skills(workflow: dict[str, Any]) -> set[str]:
     return {
         str(skill)
         for agent in workflow.get("agents", [])
+        if not agent.get("skill_sources")
         for skill in agent.get("skills", [])
     }
+
+
+def hydrate_agent_stores(workflow: dict[str, Any]) -> None:
+    """Replace role-store references with checked-in instructions and capabilities."""
+    for agent in workflow.get("agents", []):
+        store = agent.get("store")
+        if not store:
+            continue
+        agent.update(load_agent_store(store, expected_id=str(agent["id"])))
 
 
 def template_skill_roots(source: dict[str, Any]) -> list[Path]:
@@ -114,6 +172,8 @@ def normalize_template_skills(
     if missing:
         missing_set = set(missing)
         for agent in workflow.get("agents", []):
+            if agent.get("skill_sources"):
+                continue
             before = list(agent.get("skills", []))
             after = [skill for skill in before if skill not in missing_set]
             if after != before:
@@ -149,6 +209,7 @@ def instantiate_template(
     workflow_name = safe_name(name or f"{target.name}-{suffix}")
 
     workflow = copy.deepcopy(source["workflow"])
+    hydrate_agent_stores(workflow)
     if provider is not None:
         if provider not in SUPPORTED_PROVIDERS:
             raise TemplateError(f"unsupported provider: {provider}")
@@ -228,6 +289,7 @@ def main() -> int:
     except (
         TemplateError,
         AgentCellError,
+        AgentStoreError,
         OSError,
         json.JSONDecodeError,
         ValueError,

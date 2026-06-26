@@ -162,6 +162,7 @@ def prepare_phase_run(
                 "id": agent["id"],
                 "profile": profile_names[agent["id"]],
                 "skills": agent.get("skills", []),
+                "skill_sources": agent.get("skill_sources", {}),
                 "profile_source": profiles_dir / f"{profile_names[agent['id']]}.md",
             }
             for agent in workflow["agents"]

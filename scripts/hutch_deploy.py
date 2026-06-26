@@ -23,7 +23,11 @@ from pathlib import Path
 from typing import Any
 
 from hutch_paths import (
+    default_agents_store_source,
     default_cao_repo,
+    default_flows_store_source,
+    hutch_agents_store,
+    hutch_flows_store,
     hutch_generated_dir,
     hutch_home,
     hutch_projects_file,
@@ -63,6 +67,14 @@ def configure_environment(args: argparse.Namespace) -> None:
         os.environ["HUTCH_HOME"] = str(Path(args.hutch_home).expanduser().resolve())
     if getattr(args, "cao_repo", None):
         os.environ["CAO_REPO"] = str(Path(args.cao_repo).expanduser().resolve())
+    if getattr(args, "agents_store", None):
+        os.environ["HUTCH_AGENTS_STORE"] = str(
+            Path(args.agents_store).expanduser().resolve()
+        )
+    if getattr(args, "flows_store", None):
+        os.environ["HUTCH_FLOWS_STORE"] = str(
+            Path(args.flows_store).expanduser().resolve()
+        )
     os.environ["CAO_API_HOST"] = args.cao_host
     os.environ["CAO_API_PORT"] = str(args.cao_port)
     os.environ["HUTCH_URL"] = hutch_url(args)
@@ -77,6 +89,8 @@ def runtime_paths() -> dict[str, Path]:
         "runs": hutch_runs_dir(),
         "generated": hutch_generated_dir(),
         "workflows": hutch_workflows_dir(),
+        "agents_store": hutch_agents_store(),
+        "flows_store": hutch_flows_store(),
         "projects_file": hutch_projects_file(),
         "env": home / "env",
         "cao_pid": home / "pids" / "cao-server.pid",
@@ -102,6 +116,26 @@ def resolve_cao_repo() -> Path:
     if not (repo / "pyproject.toml").is_file():
         raise DeployError(f"CAO_REPO is not a Python project: {repo}")
     return repo
+
+
+def ensure_store(source: Path, destination: Path, label: str) -> dict[str, Any]:
+    if destination.exists():
+        if not destination.is_dir():
+            raise DeployError(f"{label} path exists but is not a directory: {destination}")
+        return {
+            "path": str(destination),
+            "source": str(source),
+            "status": "exists",
+        }
+    if not source.is_dir():
+        raise DeployError(f"default {label} source is absent: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+    return {
+        "path": str(destination),
+        "source": str(source),
+        "status": "copied",
+    }
 
 
 def health_json(url: str, timeout: float = 2.0) -> dict[str, Any] | None:
@@ -179,6 +213,17 @@ def check_records(args: argparse.Namespace) -> list[dict[str, str]]:
     except DeployError as error:
         add("cao-repo", "FAIL", str(error))
 
+    for label, source, destination in (
+        ("agents-store", default_agents_store_source(), hutch_agents_store()),
+        ("flows-store", default_flows_store_source(), hutch_flows_store()),
+    ):
+        if destination.is_dir():
+            add(label, "OK", str(destination))
+        elif source.is_dir():
+            add(label, "WARN", f"{destination} will be initialized from {source}")
+        else:
+            add(label, "FAIL", f"default source is absent: {source}")
+
     add(
         "cao-health",
         "OK" if health_ok(f"{cao_url(args)}/health") else "WARN",
@@ -206,10 +251,22 @@ def init_runtime(args: argparse.Namespace) -> dict[str, Any]:
             paths["projects_file"],
             {"schema": "hutch.projects.v1", "projects": []},
         )
+    agents_store = ensure_store(
+        default_agents_store_source(),
+        paths["agents_store"],
+        "agents store",
+    )
+    flows_store = ensure_store(
+        default_flows_store_source(),
+        paths["flows_store"],
+        "flows store",
+    )
     env_text = "\n".join(
         [
             f"HUTCH_HOME={paths['home']}",
             f"HUTCH_URL={hutch_url(args)}",
+            f"HUTCH_AGENTS_STORE={paths['agents_store']}",
+            f"HUTCH_FLOWS_STORE={paths['flows_store']}",
             f"CAO_REPO={repo}",
             f"CAO_API_HOST={args.cao_host}",
             f"CAO_API_PORT={args.cao_port}",
@@ -222,6 +279,8 @@ def init_runtime(args: argparse.Namespace) -> dict[str, Any]:
         "hutch_home": str(paths["home"]),
         "env": str(paths["env"]),
         "projects_file": str(paths["projects_file"]),
+        "agents_store": agents_store,
+        "flows_store": flows_store,
     }
 
 
@@ -229,6 +288,8 @@ def child_env(args: argparse.Namespace) -> dict[str, str]:
     env = dict(os.environ)
     env["HUTCH_HOME"] = str(hutch_home())
     env["HUTCH_URL"] = hutch_url(args)
+    env["HUTCH_AGENTS_STORE"] = str(hutch_agents_store())
+    env["HUTCH_FLOWS_STORE"] = str(hutch_flows_store())
     env["CAO_REPO"] = str(resolve_cao_repo())
     env["CAO_API_HOST"] = args.cao_host
     env["CAO_API_PORT"] = str(args.cao_port)
@@ -386,6 +447,14 @@ def status_report(args: argparse.Namespace) -> dict[str, Any]:
             "log": str(paths["dashboard_log"]),
         },
         "projects_file": str(paths["projects_file"]),
+        "agents_store": {
+            "path": str(paths["agents_store"]),
+            "exists": paths["agents_store"].is_dir(),
+        },
+        "flows_store": {
+            "path": str(paths["flows_store"]),
+            "exists": paths["flows_store"].is_dir(),
+        },
         "project_count": count_json_projects(paths["projects_file"]),
         "run_count": run_count,
     }
@@ -554,6 +623,8 @@ def render_text(value: Any) -> str:
 
 def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hutch-home", help="runtime root; default ~/.hutch")
+    parser.add_argument("--agents-store", help="runtime Agent Store path; default HUTCH_HOME/agents_store")
+    parser.add_argument("--flows-store", help="runtime Flow Store path; default HUTCH_HOME/flows_store")
     parser.add_argument("--cao-repo", help="local cli-agent-orchestrator checkout")
     parser.add_argument("--host", default="127.0.0.1", help="Hutch dashboard bind host")
     parser.add_argument("--dashboard-port", type=int, default=9890)

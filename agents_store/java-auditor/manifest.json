@@ -1,0 +1,22 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "java-auditor",
+  "description": "Audits Java and JVM security boundaries using source-grounded evidence.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "java-injection-review",
+    "java-web-security-review",
+    "java-deserialization-review"
+  ],
+  "provenance": {
+    "instructions": [
+      "template/flows/one-run-no-supervisor.json",
+      "cao-profiles/java-source-auditor.md"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

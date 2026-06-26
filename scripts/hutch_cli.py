@@ -14,7 +14,9 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import Any
+from agent_store import resolve_agent_store_path
 from hutch_paths import default_cao_repo
+from hutch_template import list_store_templates
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -223,6 +225,31 @@ def flow_templates(_: argparse.Namespace, __: HutchClient) -> Any:
         raise HutchCliError(f"template lister returned invalid JSON: {result.stdout}") from error
 
 
+def store_agent_list(_: argparse.Namespace, __: HutchClient) -> Any:
+    store = resolve_agent_store_path("agents_store")
+    if not store.is_dir():
+        return []
+    agents = []
+    for manifest_path in sorted(store.glob("*/manifest.json")):
+        value = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if value.get("schema") != "hutch.agent-store.v1":
+            continue
+        agents.append(
+            {
+                "id": value.get("id", manifest_path.parent.name),
+                "name": value.get("id", manifest_path.parent.name),
+                "description": value.get("description", ""),
+                "path": str(manifest_path.parent),
+                "skills": len(value.get("skills", [])),
+            }
+        )
+    return agents
+
+
+def store_flow_list(_: argparse.Namespace, __: HutchClient) -> Any:
+    return list_store_templates()
+
+
 def flow_one_run(args: argparse.Namespace, client: HutchClient) -> Any:
     """Render, compile, and install the standard single-run audit Flow."""
     template = "one-run-no-supervisor" if args.no_supervisor else "one-run"
@@ -266,6 +293,22 @@ def agent_info(args: argparse.Namespace, client: HutchClient) -> Any:
         if name == args.profile_name:
             return profile
     raise HutchCliError(f"agent profile not found: {args.profile_name}")
+
+
+def list_store(args: argparse.Namespace, client: HutchClient) -> Any:
+    if args.kind == "agent":
+        return store_agent_list(args, client)
+    if args.kind == "flow":
+        return store_flow_list(args, client)
+    raise HutchCliError(f"unsupported list kind: {args.kind}")
+
+
+def list_instance(args: argparse.Namespace, client: HutchClient) -> Any:
+    if args.kind == "agent":
+        return agent_list(args, client)
+    if args.kind == "flow":
+        return flow_list(args, client)
+    raise HutchCliError(f"unsupported listi kind: {args.kind}")
 
 
 def agent_import_external(args: argparse.Namespace, _: HutchClient) -> Any:
@@ -365,6 +408,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", action="store_true", help="emit stable JSON output")
     groups = parser.add_subparsers(dest="group", required=True)
+
+    list_group = groups.add_parser("list", help="list reusable definitions from Hutch stores")
+    list_commands = list_group.add_subparsers(dest="kind", required=True)
+    command = list_commands.add_parser("agent", help="list Agent Store roles")
+    command.set_defaults(handler=list_store)
+    command = list_commands.add_parser("flow", help="list Flow Store templates")
+    command.set_defaults(handler=list_store)
+
+    listi_group = groups.add_parser("listi", help="list runtime instances")
+    listi_commands = listi_group.add_subparsers(dest="kind", required=True)
+    command = listi_commands.add_parser("agent", help="list registered CAO agent profiles")
+    command.set_defaults(handler=list_instance)
+    command = listi_commands.add_parser("flow", help="list Hutch flow instances")
+    command.add_argument("--project")
+    command.add_argument("--status")
+    command.set_defaults(handler=list_instance)
 
     project = groups.add_parser("project", help="manage application project roots")
     project_commands = project.add_subparsers(dest="command", required=True)

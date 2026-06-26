@@ -7,6 +7,10 @@
 ```sh
 ./bin/hutch project open /path/to/application --name Example --id example
 ./bin/hutch project list
+./bin/hutch list agent
+./bin/hutch list flow
+./bin/hutch listi agent
+./bin/hutch listi flow --project example --status running
 ./bin/hutch flow catalog
 ./bin/hutch flow start FLOW_NAME
 ./bin/hutch flow list --project example
@@ -19,6 +23,12 @@
 ```
 
 Use global `--json` for stable machine-readable output and `--url` to select another Hutch instance.
+
+`hutch list agent` and `hutch list flow` read only the local Hutch stores
+(`agents_store` and `flows_store`). They do not query the Dashboard and show
+reusable definitions, not target-specific output. `hutch listi agent` and
+`hutch listi flow` query runtime state; `listi flow` accepts the same
+`--project` and `--status` filters as `hutch flow list`.
 
 ## Quick deployment
 
@@ -40,7 +50,9 @@ One-shot local startup:
 ```sh
 ./bin/hutch-deploy all \
   --cao-repo /path/to/cli-agent-orchestrator \
-  --hutch-home ~/.hutch
+  --hutch-home ~/.hutch \
+  --agents-store ~/.hutch/agents_store \
+  --flows-store ~/.hutch/flows_store
 ```
 
 Install a generated template Flow during deployment:
@@ -95,6 +107,12 @@ entry Agent performs recon and planning, then conditionally launches the
 preinstalled Java, Web, C/C++, Python, and Reverse auditors. Planning must
 record a validated `run` or `skip` decision for every domain.
 
+These seven roles are compiled from the runtime Agent Store
+`${HUTCH_AGENTS_STORE}`; by default this is `${HUTCH_HOME}/agents_store`.
+`hutch-deploy` seeds it from the Git checkout's `agents_store/` only when the
+runtime store does not already exist. Global provider Skills and MCP
+configuration are not imported into these profiles.
+
 ## Runtime data layout
 
 Mutable Hutch data is stored below `~/.hutch` by default:
@@ -103,9 +121,14 @@ Mutable Hutch data is stored below `~/.hutch` by default:
 - `~/.hutch/runs/.trash/` — deleted Run records.
 - `~/.hutch/workflows/` — generated target-specific workflow files.
 - `~/.hutch/generated/` — compiled CAO bundles and generated Agent profiles.
+- `~/.hutch/agents_store/` — deploy-seeded, locally maintainable Agent role stores.
+- `~/.hutch/flows_store/` — deploy-seeded, locally maintainable Flow templates.
 - `~/.hutch/projects/projects.json` — Dashboard project registry.
 
-Set `HUTCH_HOME=/path/to/runtime-root` to relocate these directories. Source workflows, templates, docs, and code remain in the Git checkout.
+Set `HUTCH_HOME=/path/to/runtime-root` to relocate these directories. Set
+`HUTCH_AGENTS_STORE` or `HUTCH_FLOWS_STORE`, or pass `--agents-store` /
+`--flows-store` to `hutch-deploy`, to place stores elsewhere. Source workflows,
+templates, docs, and code remain in the Git checkout.
 
 ## Client configurations
 

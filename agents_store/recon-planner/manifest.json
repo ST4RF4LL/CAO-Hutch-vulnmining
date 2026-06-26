@@ -1,0 +1,20 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "recon-planner",
+  "description": "Performs repository reconnaissance, plans applicable audit domains, and coordinates selected CAO workers.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "security-recon"
+  ],
+  "provenance": {
+    "instructions": [
+      "template/flows/one-run-no-supervisor.json",
+      "cao-profiles/security-intel-collector.md"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

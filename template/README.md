@@ -1,6 +1,8 @@
 # Hutch workflow templates
 
-This directory stores reusable CAO-native Hutch workflow templates. A template
+This directory stores generic CAO-native Hutch workflow templates. Store-backed
+templates such as `one-run` and `one-run-no-supervisor` live in `flows_store/`;
+deployment seeds a runtime copy at `${HUTCH_HOME}/flows_store`. A template
 contains the generic Agent/Stage graph; the target Git checkout, CAO checkout,
 skill roots, and generated workflow name are injected at render time.
 
@@ -25,10 +27,12 @@ shorthand below renders, compiles, and installs it:
 ./bin/hutch flow one_run /absolute/path/to/target-repo --provider codex
 ```
 
-Add `--no-supervisor` to select `one-run-no-supervisor`. That template installs
+Add `--no-supervisor` to select `one-run-no-supervisor`. These two templates are
+loaded from the runtime `flows_store` when present. The direct template installs
 all Java, Web, C/C++, Python, Reverse, and report profiles, while the
 `recon-planner` entry Agent conditionally launches only the domains selected by
-its validated plan.
+its validated plan. Those seven roles are compiled from runtime
+`agents_store/<role>/` instructions, MCP declarations, and role-local Skills.
 
 The default rendered workflow path is `workflows/<name>.generated.json`, which is
 ignored by Git. Pass `--compile` to immediately build the CAO bundle, and

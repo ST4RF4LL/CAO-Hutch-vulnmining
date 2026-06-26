@@ -90,6 +90,28 @@ def hutch_workflows_dir() -> Path:
     return hutch_runtime_dir("workflows")
 
 
+def default_agents_store_source() -> Path:
+    return ROOT / "agents_store"
+
+
+def default_flows_store_source() -> Path:
+    return ROOT / "flows_store"
+
+
+def hutch_agents_store() -> Path:
+    value = os.environ.get("HUTCH_AGENTS_STORE")
+    if value:
+        return expand_config_path(value)
+    return hutch_runtime_dir("agents_store")
+
+
+def hutch_flows_store() -> Path:
+    value = os.environ.get("HUTCH_FLOWS_STORE")
+    if value:
+        return expand_config_path(value)
+    return hutch_runtime_dir("flows_store")
+
+
 def hutch_projects_file() -> Path:
     value = os.environ.get("HUTCH_PROJECTS_FILE")
     if value:

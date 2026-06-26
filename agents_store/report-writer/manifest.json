@@ -1,0 +1,18 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "report-writer",
+  "description": "Integrates planning, executed and skipped coverage, findings, negative results, and limitations.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management"
+  ],
+  "provenance": {
+    "instructions": [
+      "template/flows/one-run-no-supervisor.json"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

@@ -277,6 +277,7 @@ def load_workflow(path: Path) -> dict[str, Any]:
                     "id": stage["id"],
                     "profile": stage["profile"],
                     "skills": stage.get("skills", []),
+                    "skill_sources": stage.get("skill_sources", {}),
                 }
                 for stage in workflow["stages"]
             ),
@@ -743,6 +744,7 @@ def prepare_run(workflow: dict[str, Any], run_dir: Path, target: Path) -> dict[s
                 "id": stage["id"],
                 "profile": stage["profile"],
                 "skills": stage.get("skills", []),
+                "skill_sources": stage.get("skill_sources", {}),
                 "profile_source": ROOT / stage["profile_file"],
             }
             for stage in workflow["stages"]
@@ -884,6 +886,7 @@ def main() -> int:
                     "id": stage["id"],
                     "profile": stage["profile"],
                     "skills": stage.get("skills", []),
+                    "skill_sources": stage.get("skill_sources", {}),
                     "profile_source": ROOT / stage["profile_file"],
                 }
                 for stage in workflow["stages"]

@@ -1,0 +1,23 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "python-auditor",
+  "description": "Audits Python execution, deserialization, web frameworks, configuration, and packaging boundaries.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "python-execution-review",
+    "python-deserialization-review",
+    "python-web-framework-review",
+    "python-dependency-config-review"
+  ],
+  "provenance": {
+    "instructions": [
+      "template/flows/one-run-no-supervisor.json",
+      "cao-profiles/python-source-auditor.md"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

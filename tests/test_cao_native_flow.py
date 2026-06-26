@@ -179,6 +179,42 @@ class CaoNativeFlowTests(unittest.TestCase):
                     [{"id": "worker", "profile": "worker", "skills": ["missing"]}],
                 )
 
+    def test_agent_cell_uses_explicit_role_local_skill_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "role/skills/local-review"
+            source.mkdir(parents=True)
+            (source / "SKILL.md").write_text(
+                "---\nname: local-review\ndescription: fixture\nlicense: MIT\n---\n",
+                encoding="utf-8",
+            )
+            run_dir = root / "run"
+            for name in CELLS.CELL_LINKS:
+                (run_dir / name).mkdir(parents=True)
+
+            cells = CELLS.prepare_agent_cells(
+                {"provider": "codex", "skill_roots": []},
+                run_dir,
+                [
+                    {
+                        "id": "reviewer",
+                        "profile": "audit-reviewer",
+                        "skills": ["local-review"],
+                        "skill_sources": {"local-review": str(source)},
+                    }
+                ],
+            )
+
+            copied = (
+                Path(cells["reviewer"]["workspace"])
+                / ".agents/skills/reviewer-local-review/SKILL.md"
+            )
+            self.assertTrue(copied.is_file())
+            self.assertEqual(
+                cells["reviewer"]["skill_sources"]["local-review"],
+                str(source.resolve()),
+            )
+
     def test_codex_agent_cell_uses_project_local_skill_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

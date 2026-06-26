@@ -1,0 +1,189 @@
+{
+  "schema": "hutch.agent-store-lock.v1",
+  "roles": {
+    "c-auditor": {
+      "manifest_sha256": "61f6aa12e262d932a07a627a455024ad362243c499cbcb0c1ed4670bacc37e3c",
+      "instructions_sha256": "77a2a5ebc7d468f89ebf61a802e9034677c256eb2cb6cdb10b1449f5330d81d6",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "c-cpp-memory-safety-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/c-cpp-subagent/c-cpp-memory-safety-review",
+          "license": "MIT",
+          "sha256": "a708ad5d7d30e2ef3766b4f17f868619e41a388b2f96db8eba3a941f02eed741"
+        },
+        "c-cpp-native-boundary-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/c-cpp-subagent/c-cpp-native-boundary-review",
+          "license": "MIT",
+          "sha256": "8e88b86080d07f155fb86f35285d08e163ea1b4658125512dfcc3fc337f71ce8"
+        },
+        "c-cpp-file-privilege-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/c-cpp-subagent/c-cpp-file-privilege-review",
+          "license": "MIT",
+          "sha256": "f4c34b4d4d2a654403b540546ef55cfc2dd43915fbe63d9d0fe81cb790230ff8"
+        }
+      }
+    },
+    "java-auditor": {
+      "manifest_sha256": "365d9565f67069ed73b16cb53a361cf90b75c615723bab4d9d4f361fdf12347a",
+      "instructions_sha256": "a8b892951ccb03f9e5ec435d8e65ba4efc157913c3c045c71a81616fc46aa752",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "java-injection-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-injection-review",
+          "license": "MIT",
+          "sha256": "2fca225bc6a2f38d91630d51ea5fceaf7cadd66cd536e3c98c6bacc547ff241b"
+        },
+        "java-web-security-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-web-security-review",
+          "license": "MIT",
+          "sha256": "ef5f2cca1b256d1a6154b625595e2a70be7f6487ade357ad4be5ce198a980a2c"
+        },
+        "java-deserialization-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-deserialization-review",
+          "license": "MIT",
+          "sha256": "3afed4fec239b44edd3f3251666d8f5846bcccf65ee23664e11fb88c9b5afdc5"
+        }
+      }
+    },
+    "python-auditor": {
+      "manifest_sha256": "129a55d6af24cd4c8d5eefd03be97d4fbe1a999136ea19d38faac229dcf4165f",
+      "instructions_sha256": "1d241e046627f240aa302ac62da1c2e78b7a401874a7a3039d12586a798b810f",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "python-execution-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/python-subagent/python-execution-review",
+          "license": "MIT",
+          "sha256": "75be5032d2a5884334184ac0f8544e6fd188e940edfc55fcf142af8b6a4f3d12"
+        },
+        "python-deserialization-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/python-subagent/python-deserialization-review",
+          "license": "MIT",
+          "sha256": "15105a9d97e9220d30ef36dcb3920a86a91a3023366a80c4d1871bd400754345"
+        },
+        "python-web-framework-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/python-subagent/python-web-framework-review",
+          "license": "MIT",
+          "sha256": "f6a611e1174d82298fb4eb680a270fe2669ee5d9d00ccf274d694ae8dc3c243b"
+        },
+        "python-dependency-config-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/python-subagent/python-dependency-config-review",
+          "license": "MIT",
+          "sha256": "5b3aa92f2e5e2974234ab736a7aea7e67eaea4558879a3d40b87675e5dd19305"
+        }
+      }
+    },
+    "recon-planner": {
+      "manifest_sha256": "902d0a8a852c46e848396cd58ce9cc699c4f53e7ee60fd042e19097541e4a471",
+      "instructions_sha256": "83b87ea6e4d7f479228c846143336e4172832c916f6ef94291937f5d616020b0",
+      "mcp_sha256": "91a2346604e3380b3ed283aef717ff3ade25aa8152f51808d68721be16935c84",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "security-recon": {
+          "source": "../opencode_multi_agents/.opencode/skills/security-intel-subagent/security-recon",
+          "license": "MIT",
+          "sha256": "85637a1b10b421bab55726be9834f8056e738241bdde06bd95982b94cb8d5e98"
+        }
+      }
+    },
+    "report-writer": {
+      "manifest_sha256": "00af28a66c812014159959f0e8140e0de0770cfba6416b02e49d39f127f213bf",
+      "instructions_sha256": "5938a34b1f45ceb8b63d0df9249c597f0b1b4cc10eba4ea1d5df42b0e52a5632",
+      "mcp_sha256": "6adc9ccc2d02ad51b48253db4b01c7fc2a1cfc72a69d7eed8a7d2c6c2c104a6a",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        }
+      }
+    },
+    "reverse-auditor": {
+      "manifest_sha256": "78903ace482a148ce0060c0cd8ccaceeb2ac0a1f60092333847051467c551069",
+      "instructions_sha256": "bb5504b4a2b08a1a97e589939fda8d38ce5265dc5341dadb5377d190d4df73b6",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        }
+      }
+    },
+    "web-auditor": {
+      "manifest_sha256": "ac85e89c8f742284f30ff9810c633a88eda530cab1e152d21e16f589e4acb660",
+      "instructions_sha256": "18abda1686f8d2cdb87e6280a091bcd9162351d26edde65fa9c31f6ffc7eb84e",
+      "mcp_sha256": "c37f7af12e7706a5a4b7add98c80e202e4d56f8e4fbff82ca9b916626fd9fbc4",
+      "skills": {
+        "secure-code-review-common": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/secure-code-review-common",
+          "license": "MIT",
+          "sha256": "26855144f00df209e734529904a9d2e95bd4428c475cb55b1c5919597db5cc0d"
+        },
+        "audit-artifact-management": {
+          "source": "../opencode_multi_agents/.opencode/skills/common-subagent/audit-artifact-management",
+          "license": "MIT",
+          "sha256": "7040cacd28cc73b460f6a4c60c1e6a6b08471c13c62b7d456cd8e189d7448043"
+        },
+        "java-web-security-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/java-subagent/java-web-security-review",
+          "license": "MIT",
+          "sha256": "ef5f2cca1b256d1a6154b625595e2a70be7f6487ade357ad4be5ce198a980a2c"
+        },
+        "python-web-framework-review": {
+          "source": "../opencode_multi_agents/.opencode/skills/python-subagent/python-web-framework-review",
+          "license": "MIT",
+          "sha256": "f6a611e1174d82298fb4eb680a270fe2669ee5d9d00ccf274d694ae8dc3c243b"
+        }
+      }
+    }
+  }
+}

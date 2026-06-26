@@ -59,6 +59,7 @@ def load_and_validate(path: Path) -> dict[str, Any]:
                     "id": agent["id"],
                     "profile": f"{workflow['name']}-{agent['id']}",
                     "skills": agent.get("skills", []),
+                    "skill_sources": agent.get("skill_sources", {}),
                 }
                 for agent in workflow["agents"]
             ),
@@ -144,40 +145,81 @@ def shell_double_quoted_value(value: str) -> str:
     )
 
 
+def agent_mcp_servers(
+    workflow: dict[str, Any], agent: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    configured = agent.get("mcp_servers")
+    if configured is None:
+        configured = {}
+        if agent.get("atlas"):
+            configured["atlas"] = {
+                "type": "stdio",
+                "command": "atlas",
+                "args": ["mcp"],
+            }
+        if agent.get("orchestrates"):
+            configured["cao-mcp-server"] = {
+                "type": "stdio",
+                "command": "uv",
+                "args": [
+                    "--directory",
+                    "${CAO_REPO}",
+                    "run",
+                    "cao-mcp-server",
+                ],
+            }
+    cao_repo = str(expand_config_path(workflow["cao_repo"]))
+    servers: dict[str, dict[str, Any]] = {}
+    for name, raw in configured.items():
+        servers[str(name)] = {
+            "type": str(raw["type"]),
+            "command": str(raw["command"]).replace("${CAO_REPO}", cao_repo),
+            "args": [
+                str(item).replace("${CAO_REPO}", cao_repo)
+                for item in raw.get("args", [])
+            ],
+        }
+    return servers
+
+
+def render_mcp_servers(servers: dict[str, dict[str, Any]]) -> str:
+    if not servers:
+        return ""
+    lines = ["", "mcpServers:"]
+    for name, server in servers.items():
+        lines.extend(
+            [
+                f"  {name}:",
+                f"    type: {server['type']}",
+                f"    command: {json.dumps(server['command'])}",
+                "    args:",
+            ]
+        )
+        lines.extend(f"      - {json.dumps(arg)}" for arg in server["args"])
+    return "\n".join(lines) + "\n"
+
+
 def render_worker_profile(workflow: dict[str, Any], agent: dict[str, Any]) -> str:
     profile_name = f"{workflow['name']}-{agent['id']}"
     provider = workflow["provider"]
     tools = ["fs_read", "fs_list", "fs_write", "execute_bash"]
-    if agent.get("atlas"):
-        tools.append("'@atlas'")
-    if agent.get("orchestrates"):
-        tools.append("'@cao-mcp-server'")
-    mcp_entries: list[str] = []
+    servers = agent_mcp_servers(workflow, agent)
+    tools.extend(f"'@{name}'" for name in servers)
     atlas_rules = ""
-    if agent.get("atlas"):
-        mcp_entries.append("""  atlas:
-    type: stdio
-    command: atlas
-    args:
-      - mcp""")
+    if "atlas" in servers:
         atlas_rules = """
 - Use Atlas for symbol discovery, callers/callees, dependency paths, and provenance where it materially strengthens the evidence. Verify important graph claims against source.
 """
-    if agent.get("orchestrates"):
-        cao_repo = expand_config_path(workflow["cao_repo"])
-        mcp_entries.append(f"""  cao-mcp-server:
-    type: stdio
-    command: uv
-    args:
-      - --directory
-      - {cao_repo}
-      - run
-      - cao-mcp-server""")
-    mcp = (
-        "\nmcpServers:\n" + "\n".join(mcp_entries) + "\n"
-        if mcp_entries
-        else ""
-    )
+    mcp = render_mcp_servers(servers)
+    instructions_file = agent.get("instructions_file")
+    if instructions_file:
+        role_instructions = expand_config_path(instructions_file).read_text(
+            encoding="utf-8"
+        ).strip()
+    else:
+        role_instructions = str(agent.get("mission", "")).strip()
+    if not role_instructions:
+        raise CompileError(f"agent {agent['id']} has no instructions")
     approved_skills = (
         ", ".join(
             f"`{runtime_skill_name(agent['id'], name)}`" for name in agent.get("skills", [])
@@ -209,7 +251,7 @@ allowedTools:
 
 # Mission
 
-{agent['mission']}
+{role_instructions}
 
 # Hutch execution contract
 

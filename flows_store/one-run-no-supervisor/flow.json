@@ -27,81 +27,31 @@
     "agents": [
       {
         "id": "recon-planner",
-        "description": "Performs repository reconnaissance and decides which domain auditors are relevant.",
-        "mission": "First build source-grounded repository, language, framework, interface, trust-boundary, and attack-surface intelligence. Then produce the authoritative domain audit plan. Decide run or skip independently for java, web, c, python, and reverse. Every skip requires concrete repository evidence; uncertainty should select run. After planning, coordinate only the selected CAO workers and the final report.",
-        "atlas": true,
-        "orchestrates": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management"
-        ]
+        "store": "agents_store/recon-planner"
       },
       {
         "id": "java-auditor",
-        "description": "Audits Java and JVM security boundaries.",
-        "mission": "Audit Java/JVM code for injection, deserialization, authentication and authorization, expression and reflection abuse, file/path operations, SSRF, cryptography, concurrency, and framework-specific security-control gaps. Report only source-grounded candidates.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "java-injection-review",
-          "java-web-security-review",
-          "java-deserialization-review"
-        ]
+        "store": "agents_store/java-auditor"
       },
       {
         "id": "web-auditor",
-        "description": "Audits HTTP, API, browser-facing, and authorization attack surfaces.",
-        "mission": "Audit routes, controllers, handlers, middleware, authentication, authorization, tenant isolation, request parsing, redirects, uploads, SSRF, injection, session and token handling, and browser-facing trust boundaries across all applicable languages.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "java-web-security-review"
-        ]
+        "store": "agents_store/web-auditor"
       },
       {
         "id": "c-auditor",
-        "description": "Audits C/C++ native and memory-safety boundaries.",
-        "mission": "Audit C/C++ and native boundaries for memory corruption, integer and lifetime errors, unsafe parsing, command and file operations, privilege boundaries, JNI/FFI crossings, concurrency, dynamic loading, and attacker-controlled native inputs.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management",
-          "c-cpp-memory-safety-review",
-          "c-cpp-native-boundary-review",
-          "c-cpp-file-privilege-review"
-        ]
+        "store": "agents_store/c-auditor"
       },
       {
         "id": "python-auditor",
-        "description": "Audits Python application and automation security boundaries.",
-        "mission": "Audit Python code for command, template and query injection, unsafe deserialization, dynamic execution and imports, path and archive handling, SSRF, authentication and authorization, secret handling, subprocess use, and framework-specific control gaps.",
-        "atlas": true,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management"
-        ]
+        "store": "agents_store/python-auditor"
       },
       {
         "id": "reverse-auditor",
-        "description": "Performs static reverse-oriented review of opaque, generated, packaged, or native artifacts.",
-        "mission": "Statically inspect repository-contained binaries, bytecode, generated code, protocol definitions, native wrappers, packaged assets, loaders, and undocumented interfaces when present. Correlate opaque behavior back to source and report limitations when artifacts are absent. Never execute target artifacts.",
-        "atlas": false,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management"
-        ]
+        "store": "agents_store/reverse-auditor"
       },
       {
         "id": "report-writer",
-        "description": "Integrates recon, planning decisions, executed audits, skipped evidence, and findings.",
-        "mission": "Produce one evidence-linked final report. Preserve every planning decision, clearly distinguish executed and skipped domains, deduplicate findings, construct attack chains, record negative results and limitations, and never present skipped-domain coverage as audited.",
-        "atlas": false,
-        "skills": [
-          "secure-code-review-common",
-          "audit-artifact-management"
-        ]
+        "store": "agents_store/report-writer"
       }
     ],
     "stages": [

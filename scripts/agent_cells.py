@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
-from hutch_paths import hutch_runs_dir
+from hutch_paths import expand_config_path, hutch_runs_dir
 
 
 CELL_LINKS = ("artifacts", "inbox", "outbox", "shared", "tmp")
@@ -215,13 +215,64 @@ def discover_skills(skill_roots: Iterable[str | Path]) -> dict[str, Path]:
     return discovered
 
 
+def resolve_cell_skill_sources(
+    workflow: dict[str, Any], specs: Iterable[dict[str, Any]]
+) -> dict[str, dict[str, Path]]:
+    """Resolve role-local Skill copies before falling back to shared roots."""
+    specs = list(specs)
+    globally_requested = {
+        skill
+        for spec in specs
+        for skill in spec.get("skills", [])
+        if skill not in (spec.get("skill_sources") or {})
+    }
+    global_catalog = (
+        discover_skills(workflow.get("skill_roots", []))
+        if globally_requested
+        else {}
+    )
+    resolved: dict[str, dict[str, Path]] = {}
+    missing: set[str] = set()
+    for spec in specs:
+        cell_id = str(spec["id"])
+        skills = list(spec.get("skills", []))
+        explicit = spec.get("skill_sources") or {}
+        if not isinstance(explicit, dict):
+            raise AgentCellError(f"Agent Cell {cell_id} skill_sources must be an object")
+        undeclared = set(explicit) - set(skills)
+        if undeclared:
+            raise AgentCellError(
+                f"Agent Cell {cell_id} has sources for undeclared Skills: "
+                f"{sorted(undeclared)}"
+            )
+        catalog: dict[str, Path] = {}
+        for skill in skills:
+            if skill not in explicit:
+                source = global_catalog.get(skill)
+                if source is None:
+                    missing.add(skill)
+                    continue
+                catalog[skill] = source
+                continue
+            source = expand_config_path(str(explicit[skill]))
+            skill_file = source / "SKILL.md"
+            if not source.is_dir() or not skill_file.is_file():
+                raise AgentCellError(
+                    f"Agent Cell {cell_id} Skill source is absent: {source}"
+                )
+            if _skill_name(skill_file) != skill:
+                raise AgentCellError(
+                    f"Agent Cell {cell_id} Skill source name mismatch: {skill_file}"
+                )
+            catalog[skill] = source
+        resolved[cell_id] = catalog
+    if missing:
+        raise AgentCellError(f"skills not found in skill_roots: {sorted(missing)}")
+    return resolved
+
+
 def validate_cell_specs(workflow: dict[str, Any], specs: Iterable[dict[str, Any]]) -> None:
     specs = list(specs)
-    requested = {skill for spec in specs for skill in spec.get("skills", [])}
-    catalog = discover_skills(workflow.get("skill_roots", [])) if requested else {}
-    missing = sorted(requested - catalog.keys())
-    if missing:
-        raise AgentCellError(f"skills not found in skill_roots: {missing}")
     seen: set[str] = set()
     for spec in specs:
         cell_id = str(spec["id"])
@@ -233,6 +284,7 @@ def validate_cell_specs(workflow: dict[str, Any], specs: Iterable[dict[str, Any]
         skills = list(spec.get("skills", []))
         if len(skills) != len(set(skills)):
             raise AgentCellError(f"Agent Cell {cell_id} declares duplicate skills")
+    resolve_cell_skill_sources(workflow, specs)
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -267,8 +319,7 @@ def prepare_agent_cells(
     provider = str(workflow.get("provider", "opencode_cli"))
     if provider not in SUPPORTED_PROVIDERS:
         raise AgentCellError(f"unsupported Agent Cell provider: {provider}")
-    requested = {skill for spec in specs for skill in spec.get("skills", [])}
-    catalog = discover_skills(workflow.get("skill_roots", [])) if requested else {}
+    catalogs = resolve_cell_skill_sources(workflow, specs)
     cells: dict[str, dict[str, Any]] = {}
     for spec in specs:
         cell_id = str(spec["id"])
@@ -296,7 +347,7 @@ def prepare_agent_cells(
         skill_sources: dict[str, str] = {}
         runtime_skills: dict[str, str] = {}
         for skill in skills:
-            source = catalog[skill]
+            source = catalogs[cell_id][skill]
             runtime_name = runtime_skill_name(cell_id, skill)
             destination = skills_dir / runtime_name
             shutil.copytree(source, destination)

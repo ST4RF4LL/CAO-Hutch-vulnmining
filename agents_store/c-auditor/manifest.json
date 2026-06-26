@@ -1,0 +1,22 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "c-auditor",
+  "description": "Audits C/C++ memory safety, native interfaces, files, processes, and privilege boundaries.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "c-cpp-memory-safety-review",
+    "c-cpp-native-boundary-review",
+    "c-cpp-file-privilege-review"
+  ],
+  "provenance": {
+    "instructions": [
+      "template/flows/one-run-no-supervisor.json",
+      "cao-profiles/c-cpp-source-auditor.md"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

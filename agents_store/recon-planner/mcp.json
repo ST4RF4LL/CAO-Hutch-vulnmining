@@ -1,0 +1,22 @@
+{
+  "schema": "hutch.agent-mcp.v1",
+  "servers": {
+    "atlas": {
+      "type": "stdio",
+      "command": "atlas",
+      "args": [
+        "mcp"
+      ]
+    },
+    "cao-mcp-server": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "${CAO_REPO}",
+        "run",
+        "cao-mcp-server"
+      ]
+    }
+  }
+}

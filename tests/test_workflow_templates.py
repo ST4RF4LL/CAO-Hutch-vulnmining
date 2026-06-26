@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -11,9 +13,29 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import generate_cao_native_flow as GENERATOR
 import hutch_template as TEMPLATE
 from adaptive_audit import atomic_json
+from hutch_paths import expand_config_path
 
 
 class WorkflowTemplateTests(unittest.TestCase):
+    def setUp(self):
+        self._runtime_home = tempfile.TemporaryDirectory()
+        self._env = {
+            "HUTCH_HOME": os.environ.get("HUTCH_HOME"),
+            "HUTCH_AGENTS_STORE": os.environ.get("HUTCH_AGENTS_STORE"),
+            "HUTCH_FLOWS_STORE": os.environ.get("HUTCH_FLOWS_STORE"),
+        }
+        os.environ["HUTCH_HOME"] = str(Path(self._runtime_home.name) / ".hutch")
+        os.environ.pop("HUTCH_AGENTS_STORE", None)
+        os.environ.pop("HUTCH_FLOWS_STORE", None)
+
+    def tearDown(self):
+        for name, value in self._env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        self._runtime_home.cleanup()
+
     def create_repository(self, root: Path) -> Path:
         repository = root / "target"
         (repository / "src/main/java/example").mkdir(parents=True)
@@ -42,6 +64,65 @@ class WorkflowTemplateTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(item["stages"] >= 1 for item in templates))
+
+    def test_runtime_flow_store_overrides_repo_store(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / ".hutch"
+            flow_store = runtime / "flows_store"
+            shutil.copytree(ROOT / "flows_store", flow_store)
+            os.environ["HUTCH_HOME"] = str(runtime)
+            path, template = TEMPLATE.load_template("one-run")
+
+            self.assertEqual(template["id"], "one-run")
+            self.assertEqual(path, (flow_store / "one-run" / "flow.json").resolve())
+
+    def test_explicit_empty_flow_store_does_not_fall_back_to_repo_store(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            flow_store = Path(temporary) / "flows"
+            flow_store.mkdir()
+            os.environ["HUTCH_FLOWS_STORE"] = str(flow_store)
+
+            templates = TEMPLATE.list_templates()
+
+            self.assertNotIn("one-run", {item["id"] for item in templates})
+            with self.assertRaisesRegex(TEMPLATE.TemplateError, "template not found"):
+                TEMPLATE.load_template("one-run")
+
+    def test_runtime_agent_store_hydrates_direct_template(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / ".hutch"
+            agents_store = runtime / "agents_store"
+            shutil.copytree(ROOT / "agents_store", agents_store)
+            os.environ["HUTCH_HOME"] = str(runtime)
+            repository = self.create_repository(root)
+
+            workflow, _, _ = TEMPLATE.instantiate_template(
+                "one-run-no-supervisor",
+                repository,
+                name="target-direct",
+                cao_repo=root,
+                skill_roots=[],
+                provider="codex",
+            )
+            recon = next(
+                agent
+                for agent in workflow["agents"]
+                if agent["id"] == "recon-planner"
+            )
+
+            self.assertEqual(
+                expand_config_path(recon["agent_store"]),
+                (agents_store / "recon-planner").resolve(),
+            )
+            self.assertTrue(
+                all(
+                    (agents_store / "recon-planner" / "skills").resolve()
+                    in expand_config_path(source).parents
+                    for source in recon["skill_sources"].values()
+                )
+            )
 
     def test_one_run_template_renders_compileable_workflow(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -99,7 +180,7 @@ class WorkflowTemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             repository = self.create_repository(root)
-            workflow, _, _ = TEMPLATE.instantiate_template(
+            workflow, removed, _ = TEMPLATE.instantiate_template(
                 "one-run-no-supervisor",
                 repository,
                 name="target-direct",
@@ -116,6 +197,7 @@ class WorkflowTemplateTests(unittest.TestCase):
             )
 
             self.assertTrue(validated["execution"]["no_supervisor"])
+            self.assertEqual(removed, {})
             self.assertIsNone(manifest["supervisor_profile"])
             self.assertEqual(manifest["entry_profile"], "target-direct-recon-planner")
             self.assertFalse(
@@ -137,6 +219,51 @@ class WorkflowTemplateTests(unittest.TestCase):
             self.assertIn("agent_profile: target-direct-recon-planner", flow)
             self.assertIn("hutch_flow_state.py\" decision", flow)
             self.assertIn("hutch_flow_state.py\" skip", flow)
+            recon = next(
+                agent
+                for agent in validated["agents"]
+                if agent["id"] == "recon-planner"
+            )
+            atlas_roles = {
+                agent["id"]
+                for agent in validated["agents"]
+                if "atlas" in agent.get("mcp_servers", {})
+            }
+            self.assertTrue(
+                {
+                    "recon-planner",
+                    "java-auditor",
+                    "web-auditor",
+                    "c-auditor",
+                    "python-auditor",
+                    "reverse-auditor",
+                }
+                <= atlas_roles
+            )
+            self.assertEqual(
+                set(recon["mcp_servers"]),
+                {"atlas", "cao-mcp-server"},
+            )
+            self.assertEqual(
+                set(recon["skill_sources"]),
+                set(recon["skills"]),
+            )
+            self.assertTrue(
+                all(
+                    source.startswith("agents_store/recon-planner/skills/")
+                    for source in recon["skill_sources"].values()
+                )
+            )
+            recon_profile = (
+                output / "profiles/target-direct-recon-planner.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("# Recon Planner", recon_profile)
+            self.assertIn("'@cao-mcp-server'", recon_profile)
+            report_profile = (
+                output / "profiles/target-direct-report-writer.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("# Report Writer", report_profile)
+            self.assertNotIn("mcpServers:", report_profile)
 
     def test_one_run_template_can_target_codex(self):
         with tempfile.TemporaryDirectory() as temporary:

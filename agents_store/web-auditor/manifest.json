@@ -1,0 +1,20 @@
+{
+  "schema": "hutch.agent-store.v1",
+  "id": "web-auditor",
+  "description": "Audits HTTP, API, browser-facing, authentication, authorization, and tenant boundaries.",
+  "instructions": "AGENTS.md",
+  "mcp": "mcp.json",
+  "skills": [
+    "secure-code-review-common",
+    "audit-artifact-management",
+    "java-web-security-review",
+    "python-web-framework-review"
+  ],
+  "provenance": {
+    "instructions": [
+      "template/flows/one-run-no-supervisor.json"
+    ],
+    "skills_source": "../opencode_multi_agents/.opencode/skills",
+    "skills_license": "MIT"
+  }
+}

@@ -84,6 +84,42 @@ class HutchCliTests(unittest.TestCase):
         self.assertEqual(client.calls[0][:2], ("POST", "/api/flows/audit/start"))
         self.assertEqual(client.calls[1][:2], ("POST", "/api/runs/run-1/stop"))
 
+    def test_top_level_list_reads_only_local_stores(self):
+        parser = CLI.build_parser()
+        agent_args = parser.parse_args(["list", "agent"])
+        flow_args = parser.parse_args(["list", "flow"])
+        client = FakeClient()
+
+        agents = CLI.list_store(agent_args, client)
+        flows = CLI.list_store(flow_args, client)
+
+        self.assertIs(agent_args.handler, CLI.list_store)
+        self.assertIs(flow_args.handler, CLI.list_store)
+        self.assertIn("recon-planner", {agent["id"] for agent in agents})
+        self.assertEqual(
+            {flow["id"] for flow in flows},
+            {"one-run-no-supervisor", "one-run"},
+        )
+        self.assertEqual(client.calls, [])
+
+    def test_top_level_listi_reads_runtime_instances(self):
+        parser = CLI.build_parser()
+        agent_args = parser.parse_args(["listi", "agent"])
+        flow_args = parser.parse_args(
+            ["listi", "flow", "--project", "app", "--status", "running"]
+        )
+        client = FakeClient()
+
+        agents = CLI.list_instance(agent_args, client)
+        flows = CLI.list_instance(flow_args, client)
+
+        self.assertIs(agent_args.handler, CLI.list_instance)
+        self.assertIs(flow_args.handler, CLI.list_instance)
+        self.assertEqual(agents, [{"name": "auditor", "provider": "opencode_cli"}])
+        self.assertEqual([flow["run_id"] for flow in flows], ["run-1"])
+        self.assertEqual(client.calls[0][:2], ("GET", "/api/cao/catalog"))
+        self.assertEqual(client.calls[1][:2], ("GET", "/api/runs"))
+
     def test_flow_one_run_compiles_installs_and_optionally_starts(self):
         client = FakeClient()
         args = argparse.Namespace(
