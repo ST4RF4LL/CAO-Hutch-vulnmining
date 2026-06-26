@@ -217,6 +217,16 @@ class WorkflowTemplateTests(unittest.TestCase):
             )
             flow = Path(manifest["flow"]).read_text(encoding="utf-8")
             self.assertIn("agent_profile: target-direct-recon-planner", flow)
+            self.assertIn("direct-flow coordinator", flow)
+            self.assertIn(
+                'cao_assign_cell.py" "[[run_dir]]/inbox/D-0001.task.json"',
+                flow,
+            )
+            self.assertIn(
+                'hutch_flow_state.py" await "[[run_dir]]" recon --timeout',
+                flow,
+            )
+            self.assertNotIn("execute task `[[run_dir]]/inbox/D-0001.task.json` yourself", flow)
             self.assertIn("hutch_flow_state.py\" decision", flow)
             self.assertIn("hutch_flow_state.py\" skip", flow)
             recon = next(

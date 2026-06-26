@@ -427,10 +427,13 @@ def render_no_supervisor_flow(
     for stage_id in entry_stage_ids:
         stage = stages[stage_id]
         entry_lines.append(
-            f"- `{stage_id}`: execute task `[[run_dir]]/inbox/{stage['task_id']}.task.json` "
-            f"yourself, write its artifacts and result, then run "
-            f"`python3 \"$HUTCH_REPO/scripts/hutch_flow_state.py\" validate "
-            f"\"[[run_dir]]\" {stage_id}`."
+            f"- `{stage_id}`: launch task `[[run_dir]]/inbox/{stage['task_id']}.task.json` "
+            f"with `python3 \"$HUTCH_REPO/scripts/cao_assign_cell.py\" "
+            f"\"[[run_dir]]/inbox/{stage['task_id']}.task.json\"`, record it with "
+            f"`python3 \"$HUTCH_REPO/scripts/hutch_flow_state.py\" start "
+            f"\"[[run_dir]]\" {stage_id} <terminal-id>`, then await it with "
+            f"`python3 \"$HUTCH_REPO/scripts/hutch_flow_state.py\" await "
+            f"\"[[run_dir]]\" {stage_id} --timeout {timeout}`."
         )
     conditional = [
         stage for stage in workflow["stages"] if stage.get("domain_condition")
@@ -454,8 +457,8 @@ script: ./{prepare_script_name}
 ---
 # CAO-owned end-to-end security workflow
 
-You are the recon and planning Agent for this workflow, not a separate
-Supervisor profile. Hutch prepared run `[[run_id]]` at `[[run_dir]]`.
+You are the direct-flow coordinator for this workflow, not a worker. Hutch
+prepared run `[[run_id]]` at `[[run_dir]]`.
 
 Read `[[manifest]]` and `[[state_file]]`, then run:
 
@@ -463,7 +466,7 @@ Read `[[manifest]]` and `[[state_file]]`, then run:
 
 ## Recon and planning
 
-Complete these stages directly and in order:
+Launch these stages in order through `cao_assign_cell.py`:
 
 {chr(10).join(entry_lines)}
 
@@ -471,6 +474,8 @@ The planning JSON is authoritative. It must decide `run` or `skip` for every
 configured domain based on repository languages, frameworks, interfaces,
 artifacts, and threat evidence. Do not run an irrelevant domain merely because
 its profile exists.
+Do not execute recon or planning yourself; the worker must run in its Agent Cell
+workspace so the copied workflow Skills are available.
 
 ## Conditional domain audits
 
