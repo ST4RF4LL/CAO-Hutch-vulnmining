@@ -1,10 +1,12 @@
 import json
+import os
 import tempfile
 import threading
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 from hutch_dashboard.model import RunDeleteConflict, RunRepository
 from hutch_dashboard.server import CaoGateway, CaoGatewayError, handler_factory
@@ -560,6 +562,87 @@ class HutchDashboardTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_http_api_lists_hutch_stores_without_cao_catalog(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            agents_store = root / "agents_store"
+            flows_store = root / "flows_store"
+            agent_dir = agents_store / "recon-planner"
+            agent_dir.mkdir(parents=True)
+            write_json(
+                agent_dir / "manifest.json",
+                {
+                    "schema": "hutch.agent-store.v1",
+                    "id": "recon-planner",
+                    "description": "Plans audit domains.",
+                    "instructions": "AGENTS.md",
+                    "mcp": "mcp.json",
+                    "skills": ["security-recon", "audit-artifact-management"],
+                },
+            )
+            write_json(
+                agent_dir / "mcp.json",
+                {
+                    "schema": "hutch.agent-mcp.v1",
+                    "servers": {
+                        "atlas": {"type": "stdio", "command": "atlas", "args": ["mcp"]}
+                    },
+                },
+            )
+            flow_dir = flows_store / "one-run"
+            flow_dir.mkdir(parents=True)
+            write_json(
+                flow_dir / "flow.json",
+                {
+                    "schema": "hutch.cao-workflow-template.v1",
+                    "id": "one-run",
+                    "version": "1.0.0",
+                    "description": "One run.",
+                    "workflow": {
+                        "provider": "opencode_cli",
+                        "schedule": "0 0 1 1 *",
+                        "execution": {"max_concurrency": 1, "max_attempts": 2},
+                        "agents": [{"id": "recon-planner"}],
+                        "stages": [{"id": "recon"}],
+                    },
+                },
+            )
+
+            class FakeCao:
+                def catalog(self):
+                    raise AssertionError("store pages must not read CAO catalog")
+
+            env = {
+                "HUTCH_AGENTS_STORE": str(agents_store),
+                "HUTCH_FLOWS_STORE": str(flows_store),
+            }
+            with mock.patch.dict(os.environ, env):
+                server = ThreadingHTTPServer(
+                    ("127.0.0.1", 0), handler_factory(self.repository, FakeCao())
+                )
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    base = f"http://127.0.0.1:{server.server_port}"
+                    with urllib.request.urlopen(base + "/api/stores/agents") as response:
+                        agents = json.load(response)
+                    with urllib.request.urlopen(base + "/api/stores/flows") as response:
+                        flows = json.load(response)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+            self.assertEqual(agents["count"], 1)
+            self.assertEqual(agents["agents"][0]["id"], "recon-planner")
+            self.assertEqual(
+                agents["agents"][0]["skills"],
+                ["security-recon", "audit-artifact-management"],
+            )
+            self.assertEqual(agents["agents"][0]["mcp_servers"][0]["name"], "atlas")
+            self.assertEqual(flows["count"], 1)
+            self.assertEqual(flows["flows"][0]["id"], "one-run")
+            self.assertEqual(flows["flows"][0]["execution"]["max_concurrency"], 1)
+
     def test_http_api_controls_flow_and_stops_run_session(self):
         state_path = self.runs / "run-001/state.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -804,10 +887,21 @@ class HutchDashboardTests(unittest.TestCase):
         styles = (static / "styles.css").read_text(encoding="utf-8")
 
         self.assertIn('id="project-only"', html)
+        self.assertIn('id="agents-store"', html)
+        self.assertIn('id="flows-store"', html)
         self.assertIn("hutch.collapsed-project-nodes.v1", script)
         self.assertIn("hutch.project-only.v1", script)
+        self.assertIn("/api/stores/agents", script)
+        self.assertIn("/api/stores/flows", script)
+        self.assertIn("function renderAgentsStoreDetail", script)
+        self.assertIn("function renderFlowsStoreDetail", script)
+        self.assertIn("function bindGraphPan", script)
+        self.assertIn('addEventListener("pointerdown"', script)
+        self.assertIn("bindGraphPan(svg, layout, applyGraphView)", script)
         self.assertIn("function bindCollapsible", script)
         self.assertIn("if (!state.projectOnly)", script)
+        self.assertIn(".store-card-grid", styles)
+        self.assertIn(".flow-graph.panning", styles)
         self.assertIn(".project-tree-children[hidden]", styles)
 
 

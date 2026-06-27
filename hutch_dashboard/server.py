@@ -27,6 +27,7 @@ from .model import (
     RunNotFound,
     RunRepository,
 )
+from .stores import list_agent_store, list_flow_store
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -530,6 +531,12 @@ def handler_factory(repository: RunRepository, cao: CaoGateway | None = None):
                 return
             if parsed.path == "/api/campaigns":
                 self._json(repository.list_campaigns(active_sessions=active_sessions()))
+                return
+            if parsed.path == "/api/stores/agents":
+                self._json(list_agent_store())
+                return
+            if parsed.path == "/api/stores/flows":
+                self._json(list_flow_store())
                 return
             if parsed.path == "/api/cao/catalog":
                 self._gateway(lambda: gateway.catalog())

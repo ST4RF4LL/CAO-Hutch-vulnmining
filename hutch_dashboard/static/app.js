@@ -34,6 +34,8 @@ const state = {
   terminalId: null,
   terminalTimer: null,
   caoCatalog: null,
+  agentsStore: null,
+  flowsStore: null,
   pendingDeleteRun: null,
   collapsedProjectNodes: loadStoredSet(TREE_COLLAPSE_STORAGE),
   projectOnly: loadStoredBoolean(PROJECT_ONLY_STORAGE),
@@ -90,6 +92,11 @@ function updateProjectOnlyControl() {
   button.title = state.projectOnly
     ? "恢复显示 Campaign、Flow 和报告"
     : "隐藏所有 Flow，只显示项目目录与微服务";
+}
+
+function updateStoreNav() {
+  document.querySelector("#agents-store").classList.toggle("active", state.view === "agents_store");
+  document.querySelector("#flows-store").classList.toggle("active", state.view === "flows_store");
 }
 
 const formatTime = value => {
@@ -170,6 +177,14 @@ async function loadRuns() {
       : `${state.projects.length} 项目 · ${state.campaigns.length} 总 Flow · ${state.runs.length} 子 Flow`;
     updateProjectOnlyControl();
     renderRunList();
+    if (state.view === "agents_store") {
+      await selectAgentsStore(true);
+      return;
+    }
+    if (state.view === "flows_store") {
+      await selectFlowsStore(true);
+      return;
+    }
     const selectedId = state.selectedRun?.run_id;
     const selectedCampaignId = state.selectedCampaign?.instance_id;
     if (!state.projectOnly && state.view === "flow" && selectedId && state.runs.some(run => run.run_id === selectedId)) {
@@ -186,6 +201,7 @@ async function loadRuns() {
 }
 
 function renderRunList() {
+  updateStoreNav();
   const list = document.querySelector("#run-list");
   list.replaceChildren();
   for (const project of state.projects) {
@@ -346,6 +362,180 @@ async function selectCampaign(instanceId) {
   }
 }
 
+function renderStoreChips(items, emptyText) {
+  const list = node("div", "store-chip-list");
+  if (!items.length) {
+    list.append(node("span", "graph-muted", emptyText));
+    return list;
+  }
+  for (const item of items) list.append(node("span", "store-chip", item));
+  return list;
+}
+
+function renderStoreHeader(kind, store, countLabel) {
+  const header = node("header", "detail-header store-detail-header");
+  const title = node("div");
+  title.append(
+    node("p", "eyebrow", "Hutch Store"),
+    node("h2", "", kind),
+    node("p", "detail-subtitle", store.path || "未配置 store 路径"),
+  );
+  const actions = node("div", "detail-actions");
+  actions.append(node("span", `status${store.exists ? "" : " status-orphaned"}`, store.exists ? countLabel : "missing"));
+  header.append(title, actions);
+  return header;
+}
+
+function renderAgentsStoreDetail() {
+  const store = state.agentsStore || { agents: [], exists: false };
+  const detail = document.querySelector("#detail");
+  detail.replaceChildren();
+  const agents = Array.isArray(store.agents) ? store.agents : [];
+  const skillTotal = agents.reduce((total, agent) => total + (agent.skill_count || 0), 0);
+  const mcpTotal = agents.reduce((total, agent) => total + (agent.mcp_count || 0), 0);
+  detail.append(renderStoreHeader("agents_store", store, `${agents.length} roles`));
+  const stats = node("div", "stats store-stats");
+  stats.append(
+    stat("Agent Roles", agents.length),
+    stat("Skills", skillTotal),
+    stat("MCP Servers", mcpTotal),
+    stat("Store", store.exists ? "available" : "missing"),
+  );
+  detail.append(stats);
+  if (!store.exists) {
+    detail.append(node("div", "project-notice", "当前 Agent Store 目录不存在。"));
+    return;
+  }
+  const section = node("section", "section");
+  section.append(sectionTitle("Agent Store", "只展示 role 简述、Skills 和 MCP server 摘要"));
+  const grid = node("div", "store-card-grid agent-store-grid");
+  for (const agent of agents) {
+    const card = node("article", "store-card card");
+    const head = node("div", "store-card-head");
+    const identity = node("div", "store-card-identity");
+    identity.append(node("h4", "", agent.id), node("p", "", agent.description || "未记录简述"));
+    head.append(identity, node("span", "store-count", `${agent.skill_count || 0} skills · ${agent.mcp_count || 0} mcp`));
+    card.append(head);
+    const facts = node("div", "facts store-facts");
+    facts.append(
+      fact("Instructions", agent.instructions || "AGENTS.md"),
+      fact("Path", agent.path || "—"),
+    );
+    card.append(facts);
+    card.append(node("h5", "", "Skills"), renderStoreChips(agent.skills || [], "未声明 Skills"));
+    card.append(node("h5", "", "MCP Servers"));
+    const mcpList = node("div", "store-mcp-list");
+    if (!(agent.mcp_servers || []).length) {
+      mcpList.append(node("span", "graph-muted", "未配置 MCP server"));
+    }
+    for (const server of agent.mcp_servers || []) {
+      const row = node("div", "store-mcp-row");
+      row.append(node("strong", "", server.name), node("span", "", server.command || server.type || "configured"));
+      mcpList.append(row);
+    }
+    card.append(mcpList);
+    grid.append(card);
+  }
+  section.append(grid);
+  detail.append(section);
+}
+
+function formatFlowExecution(flow) {
+  const execution = flow.execution || {};
+  return [
+    `concurrency ${execution.max_concurrency ?? "—"}`,
+    `attempts ${execution.max_attempts ?? "—"}`,
+    `${execution.stage_timeout_seconds ?? "—"}s timeout`,
+    execution.no_supervisor ? "direct" : "supervisor",
+  ].join(" · ");
+}
+
+function renderFlowsStoreDetail() {
+  const store = state.flowsStore || { flows: [], exists: false };
+  const detail = document.querySelector("#detail");
+  detail.replaceChildren();
+  const flows = Array.isArray(store.flows) ? store.flows : [];
+  const stageTotal = flows.reduce((total, flow) => total + (flow.stage_count || 0), 0);
+  const agentTotal = flows.reduce((total, flow) => total + (flow.agent_count || 0), 0);
+  detail.append(renderStoreHeader("flows_store", store, `${flows.length} templates`));
+  const stats = node("div", "stats store-stats");
+  stats.append(
+    stat("Flow Templates", flows.length),
+    stat("Stages", stageTotal),
+    stat("Agent Bindings", agentTotal),
+    stat("Store", store.exists ? "available" : "missing"),
+  );
+  detail.append(stats);
+  if (!store.exists) {
+    detail.append(node("div", "project-notice", "当前 Flow Store 目录不存在。"));
+    return;
+  }
+  const section = node("section", "section");
+  section.append(sectionTitle("Flow Store", "只展示可复用模板，不展示已运行 instance"));
+  const grid = node("div", "store-card-grid flow-store-grid");
+  for (const flow of flows) {
+    const card = node("article", "store-card card");
+    const head = node("div", "store-card-head");
+    const identity = node("div", "store-card-identity");
+    identity.append(node("h4", "", flow.id), node("p", "", flow.description || "未记录简述"));
+    head.append(identity, node("span", "store-count", `${flow.stage_count || 0} stages · ${flow.agent_count || 0} agents`));
+    card.append(head);
+    const facts = node("div", "facts store-facts");
+    facts.append(
+      fact("Provider", flow.provider || "—"),
+      fact("Execution", formatFlowExecution(flow)),
+      fact("Version", flow.version || "—"),
+      fact("Path", flow.path || "—"),
+    );
+    card.append(facts);
+    card.append(node("h5", "", "Agents"), renderStoreChips(flow.agents || [], "未绑定 Agent"));
+    card.append(node("h5", "", "Stages"), renderStoreChips(flow.stages || [], "未定义 Stage"));
+    grid.append(card);
+  }
+  section.append(grid);
+  detail.append(section);
+}
+
+async function selectAgentsStore(force = false) {
+  const detail = document.querySelector("#detail");
+  state.selectedProject = null;
+  state.selectedRun = null;
+  state.selectedCampaign = null;
+  state.selectedPath = null;
+  state.view = "agents_store";
+  renderRunList();
+  if (!state.agentsStore || force) {
+    detail.replaceChildren(node("div", "empty-state", "正在读取 Agent Store…"));
+    try {
+      state.agentsStore = await fetchJSON("/api/stores/agents");
+    } catch (error) {
+      detail.replaceChildren(node("div", "error", `读取 Agent Store 失败：${error.message}`));
+      return;
+    }
+  }
+  renderAgentsStoreDetail();
+}
+
+async function selectFlowsStore(force = false) {
+  const detail = document.querySelector("#detail");
+  state.selectedProject = null;
+  state.selectedRun = null;
+  state.selectedCampaign = null;
+  state.selectedPath = null;
+  state.view = "flows_store";
+  renderRunList();
+  if (!state.flowsStore || force) {
+    detail.replaceChildren(node("div", "empty-state", "正在读取 Flow Store…"));
+    try {
+      state.flowsStore = await fetchJSON("/api/stores/flows");
+    } catch (error) {
+      detail.replaceChildren(node("div", "error", `读取 Flow Store 失败：${error.message}`));
+      return;
+    }
+  }
+  renderFlowsStoreDetail();
+}
+
 function stat(label, value) {
   const box = node("div", "stat");
   box.append(node("div", "stat-label", label), node("div", "stat-value", value));
@@ -408,6 +598,49 @@ function connectedToSelection(edge) {
   if (!state.selectedGraph) return false;
   if (state.selectedGraph.type === "edge") return state.selectedGraph.id === edge.id;
   return edge.source === state.selectedGraph.id || edge.target === state.selectedGraph.id;
+}
+
+function bindGraphPan(svg, layout, applyGraphView) {
+  let drag = null;
+  const svgUnits = event => {
+    const bounds = svg.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * layout.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * layout.height,
+    };
+  };
+  svg.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    if (event.target.closest(".graph-node, .graph-edge")) return;
+    event.preventDefault();
+    drag = {
+      pointerId: event.pointerId,
+      view: svgUnits(event),
+    };
+    svg.setPointerCapture(event.pointerId);
+    svg.classList.add("panning");
+  });
+  svg.addEventListener("pointermove", event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const next = svgUnits(event);
+    state.graphView.x += (next.x - drag.view.x) / state.graphView.scale;
+    state.graphView.y += (next.y - drag.view.y) / state.graphView.scale;
+    drag.view = next;
+    applyGraphView();
+  });
+  const finish = event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      svg.releasePointerCapture(event.pointerId);
+    } catch (_error) {
+      // Pointer capture may already be gone after cancel or browser focus changes.
+    }
+    drag = null;
+    svg.classList.remove("panning");
+  };
+  svg.addEventListener("pointerup", finish);
+  svg.addEventListener("pointercancel", finish);
 }
 
 function graphInspector(run) {
@@ -575,6 +808,7 @@ function renderFlowGraph(run) {
     );
     zoomLabel.textContent = `${Math.round(state.graphView.scale * 100)}%`;
   };
+  bindGraphPan(svg, layout, applyGraphView);
   const setZoom = (nextScale, anchorX = layout.width / 2, anchorY = layout.height / 2) => {
     const previous = state.graphView.scale;
     const scale = Math.min(2.5, Math.max(0.4, nextScale));
@@ -741,6 +975,7 @@ function renderCampaignGraph(campaign) {
     viewport.setAttribute("transform", `translate(${state.graphView.x} ${state.graphView.y}) scale(${state.graphView.scale})`);
     zoomLabel.textContent = `${Math.round(state.graphView.scale * 100)}%`;
   };
+  bindGraphPan(svg, layout, applyGraphView);
   const setZoom = (nextScale, anchorX = layout.width / 2, anchorY = layout.height / 2) => {
     const previous = state.graphView.scale;
     const scale = Math.min(2.5, Math.max(0.4, nextScale));
@@ -1559,6 +1794,8 @@ document.querySelector("#delete-dialog").addEventListener("close", () => {
 });
 
 document.querySelector("#cao-launcher").addEventListener("click", openLauncher);
+document.querySelector("#agents-store").addEventListener("click", () => selectAgentsStore());
+document.querySelector("#flows-store").addEventListener("click", () => selectFlowsStore());
 document.querySelector("#project-only").addEventListener("click", () => {
   state.projectOnly = !state.projectOnly;
   persistViewPreferences();
@@ -1585,4 +1822,5 @@ document.querySelector("#terminal-dialog").addEventListener("close", () => {
 
 document.querySelector("#refresh").addEventListener("click", loadRuns);
 updateProjectOnlyControl();
+updateStoreNav();
 loadRuns();

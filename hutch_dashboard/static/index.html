@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hutch Flow Control</title>
-    <link rel="stylesheet" href="/styles.css?v=20260622-project-tree" />
+    <link rel="stylesheet" href="/styles.css?v=20260626-store-pages" />
   </head>
   <body>
     <main class="shell">
@@ -24,6 +24,10 @@
             <button id="refresh" type="button">刷新</button>
           </div>
         </div>
+        <nav class="store-nav" aria-label="Hutch stores">
+          <button id="agents-store" type="button">agents_store</button>
+          <button id="flows-store" type="button">flows_store</button>
+        </nav>
         <nav id="run-list" class="run-list" aria-label="项目目录树、微服务与 Flow"></nav>
         <footer>
           自适应遍历项目目录；Git 仓库作为微服务叶子节点。
@@ -97,6 +101,6 @@
         <button id="delete-confirm" type="button">确认删除</button>
       </footer>
     </dialog>
-    <script src="/app.js?v=20260622-project-tree" defer></script>
+    <script src="/app.js?v=20260626-store-pages" defer></script>
   </body>
 </html>
