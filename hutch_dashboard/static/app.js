@@ -1,5 +1,6 @@
 const TREE_COLLAPSE_STORAGE = "hutch.collapsed-project-nodes.v1";
 const PROJECT_ONLY_STORAGE = "hutch.project-only.v1";
+const FLOW_ONLY_STORAGE = "hutch.flow-only.v1";
 
 const loadStoredSet = key => {
   try {
@@ -39,6 +40,7 @@ const state = {
   pendingDeleteRun: null,
   collapsedProjectNodes: loadStoredSet(TREE_COLLAPSE_STORAGE),
   projectOnly: loadStoredBoolean(PROJECT_ONLY_STORAGE),
+  flowOnly: loadStoredBoolean(FLOW_ONLY_STORAGE),
 };
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -53,6 +55,7 @@ const persistViewPreferences = () => {
   try {
     localStorage.setItem(TREE_COLLAPSE_STORAGE, JSON.stringify([...state.collapsedProjectNodes]));
     localStorage.setItem(PROJECT_ONLY_STORAGE, String(state.projectOnly));
+    localStorage.setItem(FLOW_ONLY_STORAGE, String(state.flowOnly));
   } catch (_error) {
     // The dashboard remains functional when browser storage is unavailable.
   }
@@ -92,6 +95,15 @@ function updateProjectOnlyControl() {
   button.title = state.projectOnly
     ? "恢复显示 Campaign、Flow 和报告"
     : "隐藏所有 Flow，只显示项目目录与微服务";
+}
+
+function updateFlowOnlyControl() {
+  const button = document.querySelector("#flow-only");
+  button.setAttribute("aria-pressed", String(state.flowOnly));
+  button.classList.toggle("active", state.flowOnly);
+  button.title = state.flowOnly
+    ? "恢复显示所有微服务"
+    : "只显示有 Flow 的微服务";
 }
 
 function updateStoreNav() {
@@ -162,6 +174,43 @@ const stripAnsi = value => String(value || "")
   .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
   .replace(/\r/g, "");
 
+function serviceHasFlow(item) {
+  return (item.flow_count || 0) > 0
+    || (item.flows || []).length > 0
+    || state.campaigns.some(campaign => campaign.service?.id === item.id);
+}
+
+function visibleServiceCount(items) {
+  return items.reduce((total, item) => {
+    if (item.type === "directory") return total + visibleServiceCount(item.children || []);
+    return total + (!state.flowOnly || serviceHasFlow(item) ? 1 : 0);
+  }, 0);
+}
+
+function projectVisibleServiceCount(project) {
+  return visibleServiceCount(project.tree?.children || []);
+}
+
+function sidebarProjects() {
+  if (!state.flowOnly) return state.projects;
+  return state.projects.filter(project => projectVisibleServiceCount(project) > 0);
+}
+
+function updateRunCount() {
+  const count = document.querySelector("#run-count");
+  const projects = sidebarProjects();
+  const serviceCount = state.flowOnly
+    ? projects.reduce((total, project) => total + projectVisibleServiceCount(project), 0)
+    : state.projects.reduce((total, project) => total + (project.service_count || 0), 0);
+  if (state.projectOnly || state.flowOnly) {
+    count.textContent = state.flowOnly
+      ? `${projects.length} 项目 · ${serviceCount} 有 Flow 微服务`
+      : `${state.projects.length} 项目 · ${serviceCount} 微服务`;
+    return;
+  }
+  count.textContent = `${state.projects.length} 项目 · ${state.campaigns.length} 总 Flow · ${state.runs.length} 子 Flow`;
+}
+
 async function loadRuns() {
   const count = document.querySelector("#run-count");
   count.textContent = "加载中";
@@ -171,11 +220,9 @@ async function loadRuns() {
       fetchJSON("/api/campaigns"),
     ]);
     state.runs = state.projects.flatMap(project => project.flows || []);
-    const serviceCount = state.projects.reduce((total, project) => total + (project.service_count || 0), 0);
-    count.textContent = state.projectOnly
-      ? `${state.projects.length} 项目 · ${serviceCount} 微服务`
-      : `${state.projects.length} 项目 · ${state.campaigns.length} 总 Flow · ${state.runs.length} 子 Flow`;
+    updateRunCount();
     updateProjectOnlyControl();
+    updateFlowOnlyControl();
     renderRunList();
     if (state.view === "agents_store") {
       await selectAgentsStore(true);
@@ -191,8 +238,17 @@ async function loadRuns() {
       await selectRun(selectedId);
     } else if (!state.projectOnly && state.view === "campaign" && selectedCampaignId && state.campaigns.some(item => item.instance_id === selectedCampaignId)) {
       await selectCampaign(selectedCampaignId);
-    } else if (state.projects.length) {
-      selectProject(state.selectedProject?.id || state.projects[0].id);
+    } else if (sidebarProjects().length) {
+      const visible = sidebarProjects();
+      const selectedVisible = visible.some(project => project.id === state.selectedProject?.id);
+      selectProject(selectedVisible ? state.selectedProject.id : visible[0].id);
+    } else {
+      const detail = document.querySelector("#detail");
+      state.selectedProject = null;
+      state.selectedRun = null;
+      state.selectedCampaign = null;
+      state.view = "projects";
+      detail.replaceChildren(node("div", "empty-state", state.flowOnly ? "没有有 Flow 的微服务。" : "没有项目。"));
     }
   } catch (error) {
     count.textContent = "加载失败";
@@ -204,7 +260,7 @@ function renderRunList() {
   updateStoreNav();
   const list = document.querySelector("#run-list");
   list.replaceChildren();
-  for (const project of state.projects) {
+  for (const project of sidebarProjects()) {
     const group = node("section", `project-group${state.selectedProject?.id === project.id ? " active" : ""}`);
     const header = node("div", "project-header");
     const collapse = node("button", "tree-collapse-toggle");
@@ -218,7 +274,7 @@ function renderRunList() {
     identity.append(node("span", "project-name", project.name), node("span", "project-path", project.root_path || project.repo_path));
     select.append(identity);
     select.addEventListener("click", () => selectProject(project.id));
-    header.append(collapse, select, node("span", "project-count", project.service_count));
+    header.append(collapse, select, node("span", "project-count", state.flowOnly ? projectVisibleServiceCount(project) : project.service_count));
     group.append(header);
     const tree = node("div", "project-tree-sidebar");
     renderSidebarTree(project.tree?.children || [], tree, project.id, 0);
@@ -232,6 +288,7 @@ function renderSidebarTree(items, container, projectId, depth) {
   for (const item of items) {
     const key = treeNodeKey(projectId, item.id);
     if (item.type === "directory") {
+      if (state.flowOnly && visibleServiceCount(item.children || []) === 0) continue;
       const branch = node("section", "sidebar-tree-branch");
       branch.style.setProperty("--tree-depth", depth);
       const title = node("button", "sidebar-tree-title tree-collapse-trigger");
@@ -239,7 +296,7 @@ function renderSidebarTree(items, container, projectId, depth) {
       const indicator = node("span", "tree-chevron", "▾");
       const label = node("span", "tree-folder");
       label.append(indicator, node("span", "", item.name));
-      title.append(label, node("span", "", `${item.service_count} 服务`));
+      title.append(label, node("span", "", `${state.flowOnly ? visibleServiceCount(item.children || []) : item.service_count} 服务`));
       branch.append(title);
       const children = node("div", "sidebar-tree-children");
       renderSidebarTree(item.children || [], children, projectId, depth + 1);
@@ -248,6 +305,7 @@ function renderSidebarTree(items, container, projectId, depth) {
       container.append(branch);
       continue;
     }
+    if (state.flowOnly && !serviceHasFlow(item)) continue;
     const serviceBox = node("div", "sidebar-service");
     serviceBox.style.setProperty("--tree-depth", depth);
     const serviceTitle = node(
@@ -1796,20 +1854,37 @@ document.querySelector("#delete-dialog").addEventListener("close", () => {
 document.querySelector("#cao-launcher").addEventListener("click", openLauncher);
 document.querySelector("#agents-store").addEventListener("click", () => selectAgentsStore());
 document.querySelector("#flows-store").addEventListener("click", () => selectFlowsStore());
-document.querySelector("#project-only").addEventListener("click", () => {
-  state.projectOnly = !state.projectOnly;
+function refreshSidebarFilters() {
   persistViewPreferences();
   updateProjectOnlyControl();
-  const serviceCount = state.projects.reduce((total, project) => total + (project.service_count || 0), 0);
-  document.querySelector("#run-count").textContent = state.projectOnly
-    ? `${state.projects.length} 项目 · ${serviceCount} 微服务`
-    : `${state.projects.length} 项目 · ${state.campaigns.length} 总 Flow · ${state.runs.length} 子 Flow`;
+  updateFlowOnlyControl();
+  updateRunCount();
+  const visible = sidebarProjects();
+  if (state.view === "projects") {
+    if (state.selectedProject && visible.some(project => project.id === state.selectedProject.id)) {
+      selectProject(state.selectedProject.id);
+    } else if (visible.length) {
+      selectProject(visible[0].id);
+    } else {
+      state.selectedProject = null;
+      renderRunList();
+      document.querySelector("#detail").replaceChildren(node("div", "empty-state", state.flowOnly ? "没有有 Flow 的微服务。" : "没有项目。"));
+    }
+    return;
+  }
   if (state.projectOnly && state.selectedProject) {
     selectProject(state.selectedProject.id);
     return;
   }
   renderRunList();
-  if (state.view === "projects" && state.selectedProject) renderProjectDetail(state.selectedProject);
+}
+document.querySelector("#flow-only").addEventListener("click", () => {
+  state.flowOnly = !state.flowOnly;
+  refreshSidebarFilters();
+});
+document.querySelector("#project-only").addEventListener("click", () => {
+  state.projectOnly = !state.projectOnly;
+  refreshSidebarFilters();
 });
 for (const button of document.querySelectorAll("[data-close]")) {
   button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close());
@@ -1822,5 +1897,6 @@ document.querySelector("#terminal-dialog").addEventListener("close", () => {
 
 document.querySelector("#refresh").addEventListener("click", loadRuns);
 updateProjectOnlyControl();
+updateFlowOnlyControl();
 updateStoreNav();
 loadRuns();
