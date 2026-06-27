@@ -579,15 +579,19 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
     wrapper_path = output / wrapper_name
     workflow_ref = repo_relative(workflow_path)
     profiles_ref = repo_relative(profiles_dir)
+    flow_path = output / f"{workflow['name']}.flow.md"
+    flow_ref = repo_relative(flow_path)
     workflow_arg = workflow_ref if Path(workflow_ref).is_absolute() else f"$HUTCH_REPO/{workflow_ref}"
     profiles_arg = profiles_ref if Path(profiles_ref).is_absolute() else f"$HUTCH_REPO/{profiles_ref}"
+    flow_arg = flow_ref if Path(flow_ref).is_absolute() else f"$HUTCH_REPO/{flow_ref}"
     wrapper_path.write_text(
         "#!/bin/sh\n"
         "set -eu\n"
         f": \"${{HUTCH_REPO:={shell_double_quoted_value(str(ROOT))}}}\"\n"
         "export HUTCH_REPO\n"
         f"exec python3 \"$HUTCH_REPO/scripts/prepare_native_flow_run.py\" "
-        f"\"{workflow_arg}\" --profiles-dir \"{profiles_arg}\"\n",
+        f"\"{workflow_arg}\" --profiles-dir \"{profiles_arg}\" "
+        f"--flow-file \"{flow_arg}\" --launch-entry\n",
         encoding="utf-8",
     )
     wrapper_path.chmod(0o755)
@@ -601,7 +605,6 @@ def write_output(workflow_path: Path, workflow: dict[str, Any], output: Path, ca
             ),
             output / entry_agent,
         )
-    flow_path = output / f"{workflow['name']}.flow.md"
     flow_path.write_text(render_flow(workflow, wrapper_name, entry_workspace), encoding="utf-8")
     manifest = {
         "schema": "hutch.cao-bundle.v1",

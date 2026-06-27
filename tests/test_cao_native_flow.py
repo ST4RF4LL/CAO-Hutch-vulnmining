@@ -51,8 +51,11 @@ class CaoNativeFlowTests(unittest.TestCase):
                 Path(workflow["cao_repo"]),
             )
             flow = Path(manifest["flow"]).read_text(encoding="utf-8")
+            wrapper = (output / "prepare-run.sh").read_text(encoding="utf-8")
             self.assertIn("name: djl-vulnerability-mining", flow)
             self.assertIn("script: ./prepare-run.sh", flow)
+            self.assertIn("--flow-file", wrapper)
+            self.assertIn("--launch-entry", wrapper)
             self.assertIn("scripts/cao_assign_cell.py", flow)
             self.assertIn("Do not substitute CAO MCP `assign`", flow)
             self.assertIn(
@@ -379,6 +382,88 @@ class CaoNativeFlowTests(unittest.TestCase):
             self.assertEqual(task["target"]["type"], "target_project")
             self.assertEqual(task["target"]["path"], str(target.resolve()))
             self.assertEqual(task["constraints"]["write_root"], str(run_dir))
+
+    def test_native_prepare_for_cao_manual_start_spawns_entry_and_suppresses_default(self):
+        prepare_native = load_script("prepare_native_flow_run")
+
+        class FakeProcess:
+            pid = 4242
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "target"
+            target.mkdir()
+            profile_dir = root / "profiles"
+            profile_dir.mkdir()
+            profile = profile_dir / "demo-reviewer.md"
+            profile.write_text(
+                "---\nname: demo-reviewer\ndescription: reviewer\nallowedTools:\n"
+                "  - fs_read\n---\n\n# Reviewer\n",
+                encoding="utf-8",
+            )
+            agent_store = root / "agents_store/reviewer"
+            agent_store.mkdir(parents=True)
+            workflow = {
+                "schema": "hutch.cao-workflow.v1",
+                "name": "demo",
+                "provider": "codex",
+                "target": str(target),
+                "agents": [
+                    {
+                        "id": "reviewer",
+                        "description": "Reviewer",
+                        "mission": "Review target.",
+                        "skills": [],
+                        "agent_store": str(agent_store),
+                    }
+                ],
+                "stages": [
+                    {
+                        "id": "review",
+                        "task_id": "T-1",
+                        "agent": "reviewer",
+                        "depends_on": [],
+                        "artifact": "artifacts/review.md",
+                        "objective": "Review target.",
+                    }
+                ],
+            }
+            workflow_path = root / "workflow.json"
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+            flow_file = root / "demo.flow.md"
+            flow_file.write_text(
+                "---\n"
+                "name: demo\n"
+                "schedule: \"0 0 1 1 *\"\n"
+                "agent_profile: demo-reviewer\n"
+                "provider: codex\n"
+                f"working_directory: \"{agent_store}\"\n"
+                "---\n"
+                "Run [[run_dir]].\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(prepare_native, "hutch_runs_dir", return_value=root / "runs"):
+                with mock.patch("agent_cells.hutch_agents_store", return_value=(root / "agents_store").resolve()):
+                    with mock.patch.object(
+                        prepare_native.subprocess,
+                        "Popen",
+                        return_value=FakeProcess(),
+                    ) as popen:
+                        result = prepare_native.prepare_for_flow_service(
+                            workflow_path,
+                            profile_dir,
+                            flow_file,
+                            launch_entry=True,
+                        )
+
+            self.assertFalse(result["execute"])
+            launcher = result["output"]["entry_launcher"]
+            self.assertEqual(launcher["pid"], 4242)
+            self.assertTrue(Path(launcher["spec"]).is_file())
+            spec = json.loads(Path(launcher["spec"]).read_text(encoding="utf-8"))
+            self.assertEqual(spec["flow_file"], str(flow_file.resolve()))
+            popen.assert_called_once()
 
     def test_codex_assignment_waits_for_mcp_startup_to_settle(self):
         states = iter(
