@@ -1,6 +1,7 @@
 const TREE_COLLAPSE_STORAGE = "hutch.collapsed-project-nodes.v1";
 const PROJECT_ONLY_STORAGE = "hutch.project-only.v1";
 const FLOW_ONLY_STORAGE = "hutch.flow-only.v1";
+const SIDEBAR_COLLAPSED_STORAGE = "hutch.sidebar-collapsed.v1";
 
 const loadStoredSet = key => {
   try {
@@ -41,6 +42,7 @@ const state = {
   collapsedProjectNodes: loadStoredSet(TREE_COLLAPSE_STORAGE),
   projectOnly: loadStoredBoolean(PROJECT_ONLY_STORAGE),
   flowOnly: loadStoredBoolean(FLOW_ONLY_STORAGE),
+  sidebarCollapsed: loadStoredBoolean(SIDEBAR_COLLAPSED_STORAGE),
 };
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -51,11 +53,51 @@ const node = (tag, className, text) => {
   return value;
 };
 
+function artifactFilename(path) {
+  const name = String(path || "").split("/").filter(Boolean).pop() || "hutch-artifact.txt";
+  return name.replace(/[^\w.-]+/g, "-") || "hutch-artifact.txt";
+}
+
+function artifactMimeType(path) {
+  const lower = String(path || "").toLowerCase();
+  if (lower.endsWith(".md")) return "text/markdown;charset=utf-8";
+  if (lower.endsWith(".json") || lower.endsWith(".jsonl")) return "application/json;charset=utf-8";
+  return "text/plain;charset=utf-8";
+}
+
+function downloadArtifact(item) {
+  const blob = new Blob([item.content || ""], { type: artifactMimeType(item.path) });
+  const url = URL.createObjectURL(blob);
+  const link = node("a");
+  link.href = url;
+  link.download = artifactFilename(item.path);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function isFinalReportArtifact(item) {
+  const path = String(item?.path || "").toLowerCase();
+  const stage = String(item?.stage || "").toLowerCase();
+  const filename = path.split("/").pop() || path;
+  if (!path || path.startsWith("outbox/") || filename.endsWith(".json")) return false;
+  return filename.includes("final-report")
+    || filename.includes("final_report")
+    || (item.kind === "final" && filename.includes("report"))
+    || stage === "final-report";
+}
+
+function finalReportArtifactForStage(run, stageId) {
+  return (run.deliverables || []).find(item => item.stage === stageId && isFinalReportArtifact(item));
+}
+
 const persistViewPreferences = () => {
   try {
     localStorage.setItem(TREE_COLLAPSE_STORAGE, JSON.stringify([...state.collapsedProjectNodes]));
     localStorage.setItem(PROJECT_ONLY_STORAGE, String(state.projectOnly));
     localStorage.setItem(FLOW_ONLY_STORAGE, String(state.flowOnly));
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE, String(state.sidebarCollapsed));
   } catch (_error) {
     // The dashboard remains functional when browser storage is unavailable.
   }
@@ -104,6 +146,16 @@ function updateFlowOnlyControl() {
   button.title = state.flowOnly
     ? "恢复显示所有微服务"
     : "只显示有 Flow 的微服务";
+}
+
+function updateSidebarCollapseControl() {
+  const shell = document.querySelector(".shell");
+  const button = document.querySelector("#sidebar-toggle");
+  shell.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+  button.setAttribute("aria-pressed", String(state.sidebarCollapsed));
+  button.setAttribute("aria-label", state.sidebarCollapsed ? "展开左侧边栏" : "收起左侧边栏");
+  button.title = state.sidebarCollapsed ? "展开左侧边栏" : "收起左侧边栏";
+  button.textContent = state.sidebarCollapsed ? "›" : "‹";
 }
 
 function updateStoreNav() {
@@ -759,7 +811,18 @@ function graphInspector(run) {
     const button = node("button", "graph-file", item.path);
     button.type = "button";
     button.addEventListener("click", () => openArtifact(item.path));
-    files.append(button);
+    if (isFinalReportArtifact(item)) {
+      const row = node("div", "graph-file-row");
+      const download = node("button", "graph-file-download", "下载");
+      download.type = "button";
+      download.title = `下载 ${item.path}`;
+      download.setAttribute("aria-label", `下载 ${item.path}`);
+      download.addEventListener("click", () => downloadArtifact(item));
+      row.append(button, download);
+      files.append(row);
+    } else {
+      files.append(button);
+    }
   }
   panel.append(files);
   return panel;
@@ -821,6 +884,7 @@ function renderFlowGraph(run) {
   for (const item of graph.nodes) {
     const position = layout.positions[item.id];
     const selected = state.selectedGraph?.type === "node" && state.selectedGraph.id === item.id;
+    const finalReport = finalReportArtifactForStage(run, item.id);
     const group = svgNode("g", {
       class: `graph-node node-${item.type}${selected ? " selected" : ""}`,
       transform: `translate(${position.x - 83} ${position.y - 36})`,
@@ -835,6 +899,31 @@ function renderFlowGraph(run) {
     stage.textContent = shortLabel(item.label);
     const dot = svgNode("circle", { cx: 151, cy: 17, r: 5, class: "node-status" });
     group.append(label, stage, dot);
+    if (finalReport) {
+      const download = svgNode("g", {
+        class: "node-download",
+        transform: "translate(126 45)",
+        tabindex: 0,
+        role: "button",
+        "aria-label": `下载 ${finalReport.path}`,
+      });
+      const title = svgNode("title");
+      title.textContent = `下载 ${finalReport.path}`;
+      const glyph = svgNode("text", { x: 14, y: 13, class: "node-download-label", "text-anchor": "middle" });
+      glyph.textContent = "↓";
+      download.append(title, svgNode("rect", { width: 28, height: 18, rx: 5 }), glyph);
+      download.addEventListener("click", event => {
+        event.stopPropagation();
+        downloadArtifact(finalReport);
+      });
+      download.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        downloadArtifact(finalReport);
+      });
+      group.append(download);
+    }
     const activate = () => { state.selectedGraph = { type: "node", id: item.id }; renderDetail(); };
     group.addEventListener("click", activate);
     group.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") activate(); });
@@ -1854,6 +1943,11 @@ document.querySelector("#delete-dialog").addEventListener("close", () => {
 document.querySelector("#cao-launcher").addEventListener("click", openLauncher);
 document.querySelector("#agents-store").addEventListener("click", () => selectAgentsStore());
 document.querySelector("#flows-store").addEventListener("click", () => selectFlowsStore());
+document.querySelector("#sidebar-toggle").addEventListener("click", () => {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  persistViewPreferences();
+  updateSidebarCollapseControl();
+});
 function refreshSidebarFilters() {
   persistViewPreferences();
   updateProjectOnlyControl();
@@ -1898,5 +1992,6 @@ document.querySelector("#terminal-dialog").addEventListener("close", () => {
 document.querySelector("#refresh").addEventListener("click", loadRuns);
 updateProjectOnlyControl();
 updateFlowOnlyControl();
+updateSidebarCollapseControl();
 updateStoreNav();
 loadRuns();

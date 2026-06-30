@@ -888,11 +888,14 @@ class HutchDashboardTests(unittest.TestCase):
 
         self.assertIn('id="project-only"', html)
         self.assertIn('id="flow-only"', html)
+        self.assertIn('id="sidebar-toggle"', html)
         self.assertIn('id="agents-store"', html)
         self.assertIn('id="flows-store"', html)
         self.assertIn("hutch.collapsed-project-nodes.v1", script)
         self.assertIn("hutch.project-only.v1", script)
         self.assertIn("hutch.flow-only.v1", script)
+        self.assertIn("hutch.sidebar-collapsed.v1", script)
+        self.assertIn("function updateSidebarCollapseControl", script)
         self.assertIn("function serviceHasFlow", script)
         self.assertIn("function sidebarProjects", script)
         self.assertIn("function updateFlowOnlyControl", script)
@@ -906,6 +909,7 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertIn("function bindCollapsible", script)
         self.assertIn("if (!state.projectOnly)", script)
         self.assertIn(".store-card-grid", styles)
+        self.assertIn(".shell.sidebar-collapsed", styles)
         self.assertIn(".flow-graph.panning", styles)
         self.assertIn(".project-tree-children[hidden]", styles)
 
