@@ -246,8 +246,165 @@ def _mcp_servers(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _stage_depends_on(stage: dict[str, Any]) -> list[str]:
+    dependencies = stage.get("depends_on")
+    if dependencies is None:
+        dependencies = stage.get("needs")
+    return _string_list(dependencies)
+
+
+def _stage_artifacts(stage: dict[str, Any]) -> list[str]:
+    artifacts: list[str] = []
+    artifact = stage.get("artifact")
+    if isinstance(artifact, str) and artifact:
+        artifacts.append(artifact)
+    artifacts.extend(_string_list(stage.get("required_artifacts")))
+    return list(dict.fromkeys(artifacts))
+
+
+def _workflow_stages(workflow: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        stage for stage in workflow.get("stages", []) if isinstance(stage, dict)
+    ]
+
+
+def _flow_graph(workflow: dict[str, Any]) -> dict[str, Any]:
+    raw_stages = _workflow_stages(workflow)
+    stage_ids = {
+        str(stage.get("id") or "")
+        for stage in raw_stages
+        if str(stage.get("id") or "")
+    }
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for stage in raw_stages:
+        stage_id = str(stage.get("id") or "")
+        if not stage_id:
+            continue
+        agent = str(stage.get("agent") or "")
+        condition = ""
+        domain_condition = stage.get("domain_condition")
+        if isinstance(domain_condition, dict):
+            condition = str(domain_condition.get("domain") or "")
+        nodes.append(
+            {
+                "id": stage_id,
+                "label": agent or stage_id,
+                "type": "stage",
+                "agent": agent,
+                "task_id": str(stage.get("task_id") or ""),
+                "artifact": str(stage.get("artifact") or ""),
+                "artifacts": _stage_artifacts(stage),
+                "inputs": _string_list(stage.get("inputs")),
+                "condition": condition,
+            }
+        )
+        for dependency in _stage_depends_on(stage):
+            if dependency not in stage_ids:
+                continue
+            edges.append(
+                {
+                    "id": f"{dependency}->{stage_id}",
+                    "source": dependency,
+                    "target": stage_id,
+                    "type": "dependency",
+                }
+            )
+    return {"nodes": nodes, "edges": edges}
+
+
+def _workflow_agent_stage_refs(workflow: dict[str, Any]) -> dict[str, list[str]]:
+    refs: dict[str, list[str]] = {}
+    for agent in workflow.get("agents", []):
+        if not isinstance(agent, dict):
+            continue
+        agent_id = str(agent.get("id") or agent.get("store") or "")
+        if agent_id:
+            refs.setdefault(agent_id, [])
+    for stage in _workflow_stages(workflow):
+        agent_id = str(stage.get("agent") or "")
+        stage_id = str(stage.get("id") or "")
+        if agent_id and stage_id:
+            refs.setdefault(agent_id, []).append(stage_id)
+    return {agent_id: list(dict.fromkeys(stages)) for agent_id, stages in refs.items()}
+
+
+def _flow_agent_details(workflow: dict[str, Any]) -> list[dict[str, Any]]:
+    stage_refs = _workflow_agent_stage_refs(workflow)
+    details: dict[str, dict[str, Any]] = {}
+    for raw in workflow.get("agents", []):
+        if not isinstance(raw, dict):
+            continue
+        agent_id = str(raw.get("id") or raw.get("store") or "")
+        if not agent_id:
+            continue
+        skills = _string_list(raw.get("skills"))
+        details[agent_id] = {
+            "id": agent_id,
+            "store": str(raw.get("store") or ""),
+            "description": str(raw.get("description") or ""),
+            "mission": str(raw.get("mission") or ""),
+            "provider": str(raw.get("provider") or ""),
+            "atlas": bool(raw.get("atlas")),
+            "skills": skills,
+            "skill_count": len(skills),
+            "stages": stage_refs.get(agent_id, []),
+            "stage_count": len(stage_refs.get(agent_id, [])),
+            "declared": True,
+        }
+    for agent_id, stages in stage_refs.items():
+        details.setdefault(
+            agent_id,
+            {
+                "id": agent_id,
+                "store": "",
+                "description": "",
+                "mission": "",
+                "provider": "",
+                "atlas": False,
+                "skills": [],
+                "skill_count": 0,
+                "stages": stages,
+                "stage_count": len(stages),
+                "declared": False,
+            },
+        )
+    return [details[agent_id] for agent_id in sorted(details)]
+
+
+def _flow_agent_references() -> dict[str, list[dict[str, Any]]]:
+    root = active_flows_store()
+    references: dict[str, list[dict[str, Any]]] = {}
+    if not root.is_dir():
+        return references
+    for flow_path in sorted(root.glob("*/flow.json")):
+        try:
+            template = _json(flow_path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if template.get("schema") != "hutch.cao-workflow-template.v1":
+            continue
+        workflow = template.get("workflow")
+        if not isinstance(workflow, dict):
+            workflow = {}
+        flow_id = str(template.get("id") or flow_path.parent.name)
+        description = str(template.get("description") or workflow.get("description") or "")
+        for agent_id, stages in _workflow_agent_stage_refs(workflow).items():
+            references.setdefault(agent_id, []).append(
+                {
+                    "id": flow_id,
+                    "description": description,
+                    "path": _portable_path(flow_path.parent),
+                    "stages": stages,
+                    "stage_count": len(stages),
+                }
+            )
+    return references
+
+
 def list_agent_store() -> dict[str, Any]:
     root = active_agents_store()
+    flow_references = _flow_agent_references()
     agents: list[dict[str, Any]] = []
     if root.is_dir():
         for manifest_path in sorted(root.glob("*/manifest.json")):
@@ -261,6 +418,7 @@ def list_agent_store() -> dict[str, Any]:
             role_id = str(manifest.get("id") or role_dir.name)
             skills = _string_list(manifest.get("skills"))
             skill_details = _agent_skill_details(role_dir, skills)
+            references = flow_references.get(role_id, [])
             instructions = str(manifest.get("instructions") or "AGENTS.md")
             instructions_detail = _agent_instructions(role_dir, instructions)
             mcp_path = role_dir / str(manifest.get("mcp") or "mcp.json")
@@ -278,6 +436,8 @@ def list_agent_store() -> dict[str, Any]:
                     "skills": skills,
                     "skill_details": skill_details,
                     "skill_count": len(skills),
+                    "flow_references": references,
+                    "flow_count": len(references),
                     "mcp_servers": mcp,
                     "mcp_count": len(mcp),
                 }
@@ -307,12 +467,9 @@ def list_flow_store() -> dict[str, Any]:
             execution = workflow.get("execution")
             if not isinstance(execution, dict):
                 execution = {}
-            agents = [
-                str(agent.get("id") or agent.get("store") or "")
-                for agent in workflow.get("agents", [])
-                if isinstance(agent, dict)
-            ]
-            agents = [agent for agent in agents if agent]
+            graph = _flow_graph(workflow)
+            agent_details = _flow_agent_details(workflow)
+            agents = [agent["id"] for agent in agent_details]
             stages = [
                 str(stage.get("id") or "")
                 for stage in workflow.get("stages", [])
@@ -336,7 +493,9 @@ def list_flow_store() -> dict[str, Any]:
                         "max_attempts": execution.get("max_attempts"),
                         "no_supervisor": bool(execution.get("no_supervisor")),
                     },
+                    "graph": graph,
                     "agents": agents,
+                    "agent_details": agent_details,
                     "agent_count": len(agents),
                     "stages": stages,
                     "stage_count": len(stages),

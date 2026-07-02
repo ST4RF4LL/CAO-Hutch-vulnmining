@@ -705,8 +705,24 @@ class HutchDashboardTests(unittest.TestCase):
                         "provider": "opencode_cli",
                         "schedule": "0 0 1 1 *",
                         "execution": {"max_concurrency": 1, "max_attempts": 2},
-                        "agents": [{"id": "recon-planner"}],
-                        "stages": [{"id": "recon"}],
+                        "agents": [{"id": "recon-planner"}, {"id": "report-writer"}],
+                        "stages": [
+                            {
+                                "id": "recon",
+                                "task_id": "T-001",
+                                "agent": "recon-planner",
+                                "depends_on": [],
+                                "artifact": "artifacts/recon.md",
+                            },
+                            {
+                                "id": "report",
+                                "task_id": "T-002",
+                                "agent": "report-writer",
+                                "depends_on": ["recon"],
+                                "artifact": "artifacts/report.md",
+                                "required_artifacts": ["artifacts/report.json"],
+                            },
+                        ],
                     },
                 },
             )
@@ -764,6 +780,12 @@ class HutchDashboardTests(unittest.TestCase):
                 "security-intel-collector",
             )
             self.assertTrue(skill_details[0]["path"].endswith("SKILL.md"))
+            self.assertEqual(agents["agents"][0]["flow_count"], 1)
+            self.assertEqual(agents["agents"][0]["flow_references"][0]["id"], "one-run")
+            self.assertEqual(
+                agents["agents"][0]["flow_references"][0]["stages"],
+                ["recon"],
+            )
             self.assertEqual(agents["agents"][0]["mcp_servers"][0]["name"], "atlas")
             self.assertTrue(agents["agents"][0]["instructions_available"])
             self.assertIn("# Recon Planner", agents["agents"][0]["instructions_content"])
@@ -774,6 +796,26 @@ class HutchDashboardTests(unittest.TestCase):
             self.assertEqual(flows["count"], 1)
             self.assertEqual(flows["flows"][0]["id"], "one-run")
             self.assertEqual(flows["flows"][0]["execution"]["max_concurrency"], 1)
+            self.assertEqual(
+                [item["id"] for item in flows["flows"][0]["agent_details"]],
+                ["recon-planner", "report-writer"],
+            )
+            self.assertEqual(flows["flows"][0]["agent_details"][0]["stages"], ["recon"])
+            self.assertEqual(flows["flows"][0]["agent_details"][1]["stages"], ["report"])
+            self.assertEqual(flows["flows"][0]["stage_count"], 2)
+            self.assertEqual(flows["flows"][0]["graph"]["nodes"][0]["id"], "recon")
+            self.assertEqual(flows["flows"][0]["graph"]["nodes"][1]["agent"], "report-writer")
+            self.assertEqual(
+                flows["flows"][0]["graph"]["edges"],
+                [
+                    {
+                        "id": "recon->report",
+                        "source": "recon",
+                        "target": "report",
+                        "type": "dependency",
+                    }
+                ],
+            )
 
     def test_http_api_controls_flow_and_stops_run_session(self):
         state_path = self.runs / "run-001/state.json"
@@ -1102,6 +1144,7 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertIn("function renderAgentInstructions", script)
         self.assertIn("function renderAgentSkillChips", script)
         self.assertIn("function renderSkillPopover", script)
+        self.assertIn("function renderAgentFlowReferences", script)
         self.assertIn("activeSkillInfo", script)
         self.assertIn("skill_details", script)
         self.assertIn("function openAgentEditor", script)
@@ -1116,6 +1159,18 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertNotIn("function renderStoreMetadata", script)
         self.assertNotIn('stat("Metadata", metadataTotal)', script)
         self.assertIn("function renderFlowsStoreDetail", script)
+        self.assertIn("function renderFlowStoreGraph", script)
+        self.assertIn("function renderFlowAgentChips", script)
+        self.assertIn("function renderFlowAgentPopover", script)
+        self.assertIn("function renderFlowStageChips", script)
+        self.assertIn("activeFlowAgent", script)
+        self.assertIn("agent-highlight", script)
+        self.assertIn("agent_details", script)
+        self.assertIn("function flowStoreGraphLayout", script)
+        self.assertIn('svg.addEventListener("pointerdown"', script)
+        self.assertIn('svg.addEventListener("wheel"', script)
+        self.assertIn('svg.addEventListener("dblclick"', script)
+        self.assertIn("滚轮缩放 · 拖拽移动", script)
         self.assertIn("function bindGraphPan", script)
         self.assertIn('addEventListener("pointerdown"', script)
         self.assertIn("bindGraphPan(svg, layout, applyGraphView)", script)
@@ -1127,6 +1182,9 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertIn(".agent-edit-dialog", styles)
         self.assertIn(".skill-chip", styles)
         self.assertIn(".skill-popover", styles)
+        self.assertIn(".flow-agent-chip", styles)
+        self.assertIn(".agent-flow-ref-list", styles)
+        self.assertIn(".active-stage-chip", styles)
         self.assertIn(".agent-store-card-body", styles)
         self.assertIn("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)", styles)
         self.assertIn(".agent-store-facts-pane", styles)
@@ -1138,6 +1196,12 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertIn("white-space: nowrap", styles)
         self.assertIn(".run-list { flex: 1 1 auto; min-height: 0;", styles)
         self.assertIn(".xterm-dialog", styles)
+        self.assertIn(".flow-store-graph", styles)
+        self.assertIn(".flow-store-graph.panning", styles)
+        self.assertIn(".flow-store-node.agent-highlight", styles)
+        self.assertIn(".flow-store-node.agent-dimmed", styles)
+        self.assertIn("touch-action: none", styles)
+        self.assertIn(".flow-store-node", styles)
         self.assertIn(".flow-graph.panning", styles)
         self.assertIn(".project-tree-children[hidden]", styles)
 

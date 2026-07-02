@@ -45,6 +45,7 @@ const state = {
   xtermTerminal: null,
   editingAgent: null,
   activeSkillInfo: null,
+  activeFlowAgent: null,
   collapsedProjectNodes: loadStoredSet(TREE_COLLAPSE_STORAGE),
   projectOnly: loadStoredBoolean(PROJECT_ONLY_STORAGE),
   flowOnly: loadStoredBoolean(FLOW_ONLY_STORAGE),
@@ -761,12 +762,42 @@ function skillPopoverRow(label, value) {
   return row;
 }
 
+function renderFlowAgentPopover(agent) {
+  const panel = node("div", "skill-popover flow-agent-popover");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", `${agent.id} Flow agent metadata`);
+  panel.addEventListener("click", event => event.stopPropagation());
+  panel.append(
+    node("p", "eyebrow", "Flow agent"),
+    node("h6", "", agent.id),
+    node("p", "skill-popover-description", agent.description || "未记录 description。"),
+  );
+  const rows = node("div", "skill-popover-rows");
+  rows.append(skillPopoverRow("Stages", (agent.stages || []).join(", ") || "—"));
+  rows.append(skillPopoverRow("Skills", (agent.skills || []).join(", ") || "—"));
+  rows.append(skillPopoverRow("Atlas", agent.atlas ? "enabled" : "disabled"));
+  rows.append(skillPopoverRow("Provider", agent.provider || "—"));
+  if (agent.store) rows.append(skillPopoverRow("Store", agent.store));
+  rows.append(skillPopoverRow("Declared", agent.declared ? "true" : "stage-only"));
+  if (agent.mission) rows.append(skillPopoverRow("Mission", agent.mission));
+  panel.append(rows);
+  return panel;
+}
+
 function toggleSkillPopover(agentId, skillName) {
   const active = state.activeSkillInfo;
   state.activeSkillInfo = active?.agentId === agentId && active?.skillName === skillName
     ? null
     : { agentId, skillName };
   renderAgentsStoreDetail();
+}
+
+function toggleFlowAgentPopover(flowId, agentId) {
+  const active = state.activeFlowAgent;
+  state.activeFlowAgent = active?.flowId === flowId && active?.agentId === agentId
+    ? null
+    : { flowId, agentId };
+  renderFlowsStoreDetail();
 }
 
 function renderAgentSkillChips(agent) {
@@ -792,6 +823,67 @@ function renderAgentSkillChips(agent) {
     wrap.append(button);
     if (active) wrap.append(renderSkillPopover(skill));
     list.append(wrap);
+  }
+  return list;
+}
+
+function renderAgentFlowReferences(agent) {
+  const list = node("div", "agent-flow-ref-list");
+  const references = Array.isArray(agent.flow_references) ? agent.flow_references : [];
+  if (!references.length) {
+    list.append(node("span", "graph-muted", "未被 Flow Store 模板引用"));
+    return list;
+  }
+  for (const reference of references) {
+    const row = node("div", "agent-flow-ref-row");
+    const identity = node("div", "agent-flow-ref-identity");
+    identity.append(node("strong", "", reference.id), node("span", "", reference.description || reference.path || "Flow template"));
+    row.append(identity, renderStoreChips(reference.stages || [], "未绑定 Stage"));
+    list.append(row);
+  }
+  return list;
+}
+
+function renderFlowAgentChips(flow) {
+  const list = node("div", "store-chip-list");
+  const agents = Array.isArray(flow.agent_details) ? flow.agent_details : [];
+  if (!agents.length) {
+    list.append(node("span", "graph-muted", "未绑定 Agent"));
+    return list;
+  }
+  for (const agent of agents) {
+    const active = state.activeFlowAgent?.flowId === flow.id
+      && state.activeFlowAgent?.agentId === agent.id;
+    const wrap = node("span", "skill-chip-wrap");
+    const button = node("button", `store-chip flow-agent-chip${active ? " active" : ""}`, agent.id);
+    button.type = "button";
+    button.setAttribute("aria-expanded", String(active));
+    button.title = `${agent.stage_count || 0} stages`;
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleFlowAgentPopover(flow.id, agent.id);
+    });
+    wrap.append(button);
+    if (active) wrap.append(renderFlowAgentPopover(agent));
+    list.append(wrap);
+  }
+  return list;
+}
+
+function renderFlowStageChips(flow) {
+  const activeAgent = state.activeFlowAgent?.flowId === flow.id
+    ? state.activeFlowAgent.agentId
+    : null;
+  const activeStages = new Set((flow.agent_details || [])
+    .find(agent => agent.id === activeAgent)?.stages || []);
+  const list = node("div", "store-chip-list");
+  const stages = Array.isArray(flow.stages) ? flow.stages : [];
+  if (!stages.length) {
+    list.append(node("span", "graph-muted", "未定义 Stage"));
+    return list;
+  }
+  for (const stage of stages) {
+    list.append(node("span", `store-chip${activeStages.has(stage) ? " active-stage-chip" : ""}`, stage));
   }
   return list;
 }
@@ -925,6 +1017,7 @@ function renderAgentsStoreDetail() {
     body.append(instructionsPane, factsPane);
     card.append(body);
     card.append(node("h5", "", "Skills"), renderAgentSkillChips(agent));
+    card.append(node("h5", "", "Referenced By Flows"), renderAgentFlowReferences(agent));
     card.append(node("h5", "", "MCP Servers"));
     const mcpList = node("div", "store-mcp-list");
     if (!(agent.mcp_servers || []).length) {
@@ -950,6 +1043,179 @@ function formatFlowExecution(flow) {
     `${execution.stage_timeout_seconds ?? "—"}s timeout`,
     execution.no_supervisor ? "direct" : "supervisor",
   ].join(" · ");
+}
+
+function flowStoreGraphLayout(graph) {
+  const nodes = graph.nodes || [];
+  const levels = Object.fromEntries(nodes.map(item => [item.id, 0]));
+  for (let round = 0; round < nodes.length + 2; round += 1) {
+    let changed = false;
+    for (const edge of graph.edges || []) {
+      const next = (levels[edge.source] || 0) + 1;
+      if (next > (levels[edge.target] || 0)) {
+        levels[edge.target] = next;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const maxLevel = Math.max(0, ...Object.values(levels));
+  const byLevel = new Map();
+  for (const item of nodes) {
+    const level = levels[item.id] || 0;
+    if (!byLevel.has(level)) byLevel.set(level, []);
+    byLevel.get(level).push(item);
+  }
+  const maxRows = Math.max(1, ...[...byLevel.values()].map(items => items.length));
+  const width = Math.max(640, (maxLevel + 1) * 184);
+  const height = Math.max(190, maxRows * 78 + 42);
+  const positions = {};
+  for (const [level, items] of byLevel.entries()) {
+    const x = maxLevel === 0 ? width / 2 : 78 + level * ((width - 156) / maxLevel);
+    items.forEach((item, index) => {
+      positions[item.id] = { x, y: ((index + 1) * height) / (items.length + 1) };
+    });
+  }
+  return { width, height, positions };
+}
+
+function renderFlowStoreGraph(flow) {
+  const graph = flow.graph || { nodes: [], edges: [] };
+  if (!graph.nodes?.length) return node("div", "graph-muted", "未定义 workflow stages。");
+  const activeAgent = state.activeFlowAgent?.flowId === flow.id
+    ? state.activeFlowAgent.agentId
+    : null;
+  const layout = flowStoreGraphLayout(graph);
+  const markerId = `flow-store-arrow-${String(flow.id || "flow").replace(/[^\w-]+/g, "-")}`;
+  const frame = node("div", "flow-store-graph-card");
+  const canvas = node("div", "flow-store-graph-canvas");
+  const svg = svgNode("svg", {
+    class: "flow-store-graph",
+    viewBox: `0 0 ${layout.width} ${layout.height}`,
+    role: "img",
+    "aria-label": `${flow.id} workflow graph`,
+  });
+  const defs = svgNode("defs");
+  const marker = svgNode("marker", { id: markerId, viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto" });
+  marker.append(svgNode("path", { d: "M 0 0 L 10 5 L 0 10 z", class: "arrow-head" }));
+  defs.append(marker);
+  svg.append(defs);
+  const viewport = svgNode("g", {
+    class: "flow-store-viewport",
+    transform: "translate(0 0) scale(1)",
+  });
+
+  for (const edge of graph.edges || []) {
+    const source = layout.positions[edge.source];
+    const target = layout.positions[edge.target];
+    if (!source || !target) continue;
+    const x1 = source.x + 65;
+    const x2 = target.x - 65;
+    const bend = Math.max(28, (x2 - x1) * 0.45);
+    const pathValue = `M ${x1} ${source.y} C ${x1 + bend} ${source.y}, ${x2 - bend} ${target.y}, ${x2} ${target.y}`;
+    const group = svgNode("g", { class: "flow-store-edge" });
+    const title = svgNode("title");
+    title.textContent = `${edge.source} -> ${edge.target}`;
+    group.append(title, svgNode("path", { d: pathValue, "marker-end": `url(#${markerId})` }));
+    viewport.append(group);
+  }
+
+  for (const item of graph.nodes || []) {
+    const position = layout.positions[item.id];
+    if (!position) continue;
+    const group = svgNode("g", {
+      class: `flow-store-node${item.condition ? " conditional" : ""}${activeAgent && item.agent === activeAgent ? " agent-highlight" : ""}${activeAgent && item.agent !== activeAgent ? " agent-dimmed" : ""}`,
+      transform: `translate(${position.x - 65} ${position.y - 26})`,
+    });
+    const title = svgNode("title");
+    title.textContent = [
+      item.id,
+      item.agent ? `agent: ${item.agent}` : "",
+      item.artifact ? `artifact: ${item.artifact}` : "",
+      item.condition ? `condition: ${item.condition}` : "",
+    ].filter(Boolean).join("\n");
+    const label = svgNode("text", { x: 10, y: 21, class: "flow-store-node-label" });
+    label.textContent = shortLabel(item.id);
+    const agent = svgNode("text", { x: 10, y: 38, class: "flow-store-node-agent" });
+    agent.textContent = shortLabel(item.agent || item.task_id || "stage");
+    group.append(title, svgNode("rect", { width: 130, height: 52, rx: 7 }), label, agent);
+    if (item.condition) {
+      const chip = svgNode("text", { x: 120, y: 15, class: "flow-store-node-condition", "text-anchor": "end" });
+      chip.textContent = "?";
+      group.append(chip);
+    }
+    viewport.append(group);
+  }
+  svg.append(viewport);
+
+  const view = { scale: 1, x: 0, y: 0 };
+  const applyView = () => {
+    viewport.setAttribute("transform", `translate(${view.x} ${view.y}) scale(${view.scale})`);
+  };
+  const svgUnits = event => {
+    const bounds = svg.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * layout.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * layout.height,
+    };
+  };
+  const setZoom = (nextScale, anchorX, anchorY) => {
+    const previous = view.scale;
+    const scale = Math.min(2.8, Math.max(0.45, nextScale));
+    if (scale === previous) return;
+    view.x = anchorX - ((anchorX - view.x) * scale) / previous;
+    view.y = anchorY - ((anchorY - view.y) * scale) / previous;
+    view.scale = scale;
+    applyView();
+  };
+  let drag = null;
+  svg.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    drag = { pointerId: event.pointerId, view: svgUnits(event) };
+    svg.setPointerCapture(event.pointerId);
+    svg.classList.add("panning");
+  });
+  svg.addEventListener("pointermove", event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const next = svgUnits(event);
+    view.x += (next.x - drag.view.x) / view.scale;
+    view.y += (next.y - drag.view.y) / view.scale;
+    drag.view = next;
+    applyView();
+  });
+  const finishDrag = event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      svg.releasePointerCapture(event.pointerId);
+    } catch (_error) {
+      // Pointer capture may already be released when the browser cancels dragging.
+    }
+    drag = null;
+    svg.classList.remove("panning");
+  };
+  svg.addEventListener("pointerup", finishDrag);
+  svg.addEventListener("pointercancel", finishDrag);
+  svg.addEventListener("wheel", event => {
+    event.preventDefault();
+    const anchor = svgUnits(event);
+    setZoom(view.scale * Math.exp(-event.deltaY * 0.0015), anchor.x, anchor.y);
+  }, { passive: false });
+  svg.addEventListener("dblclick", () => {
+    view.scale = 1;
+    view.x = 0;
+    view.y = 0;
+    applyView();
+  });
+
+  canvas.append(svg);
+  const legend = node("div", "flow-store-graph-legend");
+  legend.append(node("span", "", `${graph.nodes.length} stages`));
+  legend.append(node("span", "", `${graph.edges?.length || 0} dependencies`));
+  legend.append(node("span", "", "滚轮缩放 · 拖拽移动"));
+  frame.append(canvas, legend);
+  return frame;
 }
 
 function renderFlowsStoreDetail() {
@@ -990,8 +1256,9 @@ function renderFlowsStoreDetail() {
       fact("Path", flow.path || "—"),
     );
     card.append(facts);
-    card.append(node("h5", "", "Agents"), renderStoreChips(flow.agents || [], "未绑定 Agent"));
-    card.append(node("h5", "", "Stages"), renderStoreChips(flow.stages || [], "未定义 Stage"));
+    card.append(node("h5", "", "Workflow Graph"), renderFlowStoreGraph(flow));
+    card.append(node("h5", "", "Agents"), renderFlowAgentChips(flow));
+    card.append(node("h5", "", "Stages"), renderFlowStageChips(flow));
     grid.append(card);
   }
   section.append(grid);
@@ -1004,6 +1271,7 @@ async function selectAgentsStore(force = false) {
   state.selectedRun = null;
   state.selectedCampaign = null;
   state.selectedPath = null;
+  state.activeFlowAgent = null;
   state.view = "agents_store";
   renderRunList();
   if (!state.agentsStore || force) {
@@ -1025,6 +1293,7 @@ async function selectFlowsStore(force = false) {
   state.selectedCampaign = null;
   state.selectedPath = null;
   state.activeSkillInfo = null;
+  state.activeFlowAgent = null;
   state.view = "flows_store";
   renderRunList();
   if (!state.flowsStore || force) {
@@ -2359,10 +2628,12 @@ document.querySelector("#delete-dialog").addEventListener("close", () => {
   document.querySelector("#delete-cancel").disabled = false;
 });
 
-function closeSkillPopover() {
-  if (!state.activeSkillInfo) return;
+function closeStorePopovers() {
+  if (!state.activeSkillInfo && !state.activeFlowAgent) return;
   state.activeSkillInfo = null;
+  state.activeFlowAgent = null;
   if (state.view === "agents_store") renderAgentsStoreDetail();
+  if (state.view === "flows_store") renderFlowsStoreDetail();
 }
 
 document.querySelector("#cao-launcher").addEventListener("click", openLauncher);
@@ -2418,9 +2689,9 @@ document.querySelector("#project-only").addEventListener("click", () => {
 for (const button of document.querySelectorAll("[data-close]")) {
   button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close());
 }
-document.addEventListener("click", closeSkillPopover);
+document.addEventListener("click", closeStorePopovers);
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape") closeSkillPopover();
+  if (event.key === "Escape") closeStorePopovers();
 });
 document.querySelector("#terminal-dialog").addEventListener("close", () => {
   if (state.terminalTimer) clearInterval(state.terminalTimer);
