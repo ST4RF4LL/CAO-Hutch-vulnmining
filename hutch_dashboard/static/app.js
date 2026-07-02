@@ -195,6 +195,7 @@ function updateQuAgentPanel() {
   const windowName = agent.window || "codex";
   const workspace = agent.working_directory || "Hutch workspace";
   meta.textContent = `codex · ${session}:${windowName} · ${workspace}`;
+  meta.title = meta.textContent;
   errorBox.hidden = !agent.error;
   errorBox.textContent = agent.error ? `ERROR: ${agent.error}` : "";
 }
