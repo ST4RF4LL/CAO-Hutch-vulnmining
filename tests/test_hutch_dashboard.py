@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -9,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from hutch_dashboard.model import RunDeleteConflict, RunRepository
-from hutch_dashboard.server import CaoGateway, CaoGatewayError, handler_factory
+from hutch_dashboard.server import CaoGateway, CaoGatewayError, QuAgentTerminal, handler_factory
 
 
 def write_json(path: Path, value) -> None:
@@ -527,9 +528,45 @@ class HutchDashboardTests(unittest.TestCase):
                 self.calls.append(("execute", command))
                 return {"ok": True, "command": command}
 
+        class FakeQu:
+            def __init__(self):
+                self.calls = []
+
+            def status(self):
+                self.calls.append(("qu-status",))
+                return {
+                    "ok": True,
+                    "live": False,
+                    "session": "hutch-qu-agent",
+                    "window": "codex",
+                    "websocket_path": None,
+                }
+
+            def start(self):
+                self.calls.append(("qu-start",))
+                return {
+                    "ok": True,
+                    "live": True,
+                    "session": "hutch-qu-agent",
+                    "window": "codex",
+                    "terminal_id": "hutch-qu-agent",
+                    "websocket_path": "/api/qu-agent/ws",
+                }
+
+            def stop(self):
+                self.calls.append(("qu-stop",))
+                return {
+                    "ok": True,
+                    "live": False,
+                    "session": "hutch-qu-agent",
+                    "window": "codex",
+                    "websocket_path": None,
+                }
+
         fake = FakeCao()
+        fake_qu = FakeQu()
         server = ThreadingHTTPServer(
-            ("127.0.0.1", 0), handler_factory(self.repository, fake)
+            ("127.0.0.1", 0), handler_factory(self.repository, fake, fake_qu)
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -553,11 +590,37 @@ class HutchDashboardTests(unittest.TestCase):
             )
             with urllib.request.urlopen(command) as response:
                 executed = json.load(response)
+            with urllib.request.urlopen(base + "/api/qu-agent") as response:
+                qu_status = json.load(response)
+            qu_start = urllib.request.Request(
+                base + "/api/qu-agent/start",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(qu_start) as response:
+                qu_started = json.load(response)
+            qu_stop = urllib.request.Request(
+                base + "/api/qu-agent/stop",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(qu_stop) as response:
+                qu_stopped = json.load(response)
             self.assertEqual(terminal["output"], "screen")
             self.assertTrue(sent["success"])
             self.assertTrue(executed["ok"])
+            self.assertFalse(qu_status["live"])
+            self.assertEqual(qu_started["terminal_id"], "hutch-qu-agent")
+            self.assertEqual(qu_started["websocket_path"], "/api/qu-agent/ws")
+            self.assertFalse(qu_stopped["live"])
             self.assertIn(("input", "term-1", "continue"), fake.calls)
             self.assertIn(("execute", "cao flow run audit-flow"), fake.calls)
+            self.assertEqual(
+                fake_qu.calls,
+                [("qu-status",), ("qu-start",), ("qu-stop",)],
+            )
         finally:
             server.shutdown()
             server.server_close()
@@ -578,7 +641,16 @@ class HutchDashboardTests(unittest.TestCase):
                     "instructions": "AGENTS.md",
                     "mcp": "mcp.json",
                     "skills": ["security-recon", "audit-artifact-management"],
+                    "priority": "high",
+                    "provenance": {
+                        "instructions": ["template.json"],
+                        "skills_license": "MIT",
+                    },
                 },
+            )
+            (agent_dir / "AGENTS.md").write_text(
+                "# Recon Planner\n\nRead source trees and produce a scoped audit plan.\n",
+                encoding="utf-8",
             )
             write_json(
                 agent_dir / "mcp.json",
@@ -589,6 +661,37 @@ class HutchDashboardTests(unittest.TestCase):
                     },
                 },
             )
+            skill_headers = {
+                "security-recon": (
+                    "Five-layer attack surface reconnaissance for source security audits.",
+                    "security-intel-collector",
+                ),
+                "audit-artifact-management": (
+                    "Manage per-agent-session audit artifacts.",
+                    "shared",
+                ),
+            }
+            for skill_name, (description, role) in skill_headers.items():
+                skill_dir = agent_dir / "skills" / skill_name
+                skill_dir.mkdir(parents=True)
+                (skill_dir / "SKILL.md").write_text(
+                    "\n".join(
+                        [
+                            "---",
+                            f"name: {skill_name}",
+                            f"description: {description}",
+                            "license: MIT",
+                            "compatibility: opencode",
+                            "metadata:",
+                            f"  role: {role}",
+                            "---",
+                            "",
+                            f"# {skill_name}",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
             flow_dir = flows_store / "one-run"
             flow_dir.mkdir(parents=True)
             write_json(
@@ -628,6 +731,16 @@ class HutchDashboardTests(unittest.TestCase):
                         agents = json.load(response)
                     with urllib.request.urlopen(base + "/api/stores/flows") as response:
                         flows = json.load(response)
+                    update_request = urllib.request.Request(
+                        base + "/api/stores/agents/recon-planner/instructions",
+                        data=json.dumps(
+                            {"content": "# Updated Recon Planner\n\nRead source trees.\n"}
+                        ).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(update_request) as response:
+                        updated_agents = json.load(response)
                 finally:
                     server.shutdown()
                     server.server_close()
@@ -638,7 +751,26 @@ class HutchDashboardTests(unittest.TestCase):
                 agents["agents"][0]["skills"],
                 ["security-recon", "audit-artifact-management"],
             )
+            skill_details = agents["agents"][0]["skill_details"]
+            self.assertEqual(
+                [item["name"] for item in skill_details],
+                ["security-recon", "audit-artifact-management"],
+            )
+            self.assertTrue(skill_details[0]["available"])
+            self.assertEqual(skill_details[0]["metadata"]["name"], "security-recon")
+            self.assertEqual(skill_details[0]["metadata"]["license"], "MIT")
+            self.assertEqual(
+                skill_details[0]["metadata"]["metadata"]["role"],
+                "security-intel-collector",
+            )
+            self.assertTrue(skill_details[0]["path"].endswith("SKILL.md"))
             self.assertEqual(agents["agents"][0]["mcp_servers"][0]["name"], "atlas")
+            self.assertTrue(agents["agents"][0]["instructions_available"])
+            self.assertIn("# Recon Planner", agents["agents"][0]["instructions_content"])
+            self.assertTrue(agents["agents"][0]["instructions_path"].endswith("AGENTS.md"))
+            self.assertNotIn("metadata_count", agents["agents"][0])
+            self.assertIn("# Updated Recon Planner", updated_agents["agents"][0]["instructions_content"])
+            self.assertIn("# Updated Recon Planner", (agent_dir / "AGENTS.md").read_text(encoding="utf-8"))
             self.assertEqual(flows["count"], 1)
             self.assertEqual(flows["flows"][0]["id"], "one-run")
             self.assertEqual(flows["flows"][0]["execution"]["max_concurrency"], 1)
@@ -880,6 +1012,47 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertEqual(gateway.requests[0][:2], ("POST", "/flows/audit-flow/disable"))
         self.assertEqual(gateway.requests[1][:2], ("DELETE", "/sessions/cao-flow-audit-flow"))
 
+    def test_qu_agent_launches_local_tmux_codex_in_hutch_workspace(self):
+        class RecordingQuAgent(QuAgentTerminal):
+            def __init__(self):
+                super().__init__(
+                    workspace=Path(__file__).resolve().parents[1],
+                    command="codex",
+                )
+                self.requests = []
+                self.live = False
+
+            def _run(self, args, timeout=10.0):
+                self.requests.append(args)
+                if args[:2] == ["tmux", "has-session"]:
+                    return subprocess.CompletedProcess(
+                        args,
+                        0 if self.live else 1,
+                        "",
+                        "" if self.live else "no server running",
+                    )
+                if args[:2] in (["tmux", "new-session"], ["tmux", "new-window"]):
+                    self.live = True
+                if args[:2] == ["tmux", "kill-session"]:
+                    self.live = False
+                return subprocess.CompletedProcess(args, 0, "", "")
+
+        service = RecordingQuAgent()
+        started = service.start()
+        stopped = service.stop()
+
+        launch = next(request for request in service.requests if request[:2] == ["tmux", "new-session"])
+        self.assertEqual(started["terminal_id"], "hutch-qu-agent")
+        self.assertEqual(started["websocket_path"], "/api/qu-agent/ws")
+        self.assertFalse(stopped["live"])
+        self.assertIn("-s", launch)
+        self.assertIn("hutch-qu-agent", launch)
+        self.assertIn("-n", launch)
+        self.assertIn("codex", launch)
+        self.assertIn("-c", launch)
+        self.assertIn(str(Path(__file__).resolve().parents[1]), launch)
+        self.assertIn(["tmux", "kill-session", "-t", "hutch-qu-agent"], service.requests)
+
     def test_project_tree_ui_exposes_persistent_collapse_and_project_only_mode(self):
         static = Path(__file__).resolve().parents[1] / "hutch_dashboard" / "static"
         html = (static / "index.html").read_text(encoding="utf-8")
@@ -889,19 +1062,58 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertIn('id="project-only"', html)
         self.assertIn('id="flow-only"', html)
         self.assertIn('id="sidebar-toggle"', html)
+        self.assertIn('id="qu-agent-panel"', html)
+        self.assertIn('id="qu-agent-start"', html)
+        self.assertIn('id="qu-agent-stop"', html)
+        self.assertIn('id="xterm-dialog"', html)
+        self.assertIn('id="xterm-screen"', html)
+        self.assertIn('id="agent-edit-dialog"', html)
+        self.assertIn('id="agent-edit-input"', html)
+        self.assertIn('id="agent-edit-save"', html)
+        self.assertIn("/vendor/xterm/xterm.js", html)
+        self.assertIn("/vendor/xterm/addon-fit.js", html)
+        self.assertIn("/vendor/xterm/xterm.css", html)
         self.assertIn('id="agents-store"', html)
         self.assertIn('id="flows-store"', html)
         self.assertIn("hutch.collapsed-project-nodes.v1", script)
         self.assertIn("hutch.project-only.v1", script)
         self.assertIn("hutch.flow-only.v1", script)
         self.assertIn("hutch.sidebar-collapsed.v1", script)
+        self.assertIn("hutch.qu-agent-collapsed.v1", script)
         self.assertIn("function updateSidebarCollapseControl", script)
+        self.assertIn("function refreshQuAgent", script)
+        self.assertIn("/api/qu-agent/start", script)
+        self.assertIn("/api/qu-agent/stop", script)
+        self.assertIn("function openQuAgentTerminal", script)
+        self.assertIn("function openXtermTerminal", script)
+        self.assertIn("new WebSocket(websocketURL(websocketPath))", script)
+        self.assertIn('websocketPath: `/api/terminals/${encodeURIComponent(terminalId)}/ws`', script)
+        self.assertIn("websocket_path", script)
+        self.assertIn("new TerminalCtor", script)
+        self.assertNotIn("cao_terminal_url", script)
+        self.assertNotIn('window.open(url, "_blank", "noopener,noreferrer")', script)
         self.assertIn("function serviceHasFlow", script)
         self.assertIn("function sidebarProjects", script)
         self.assertIn("function updateFlowOnlyControl", script)
         self.assertIn("/api/stores/agents", script)
         self.assertIn("/api/stores/flows", script)
         self.assertIn("function renderAgentsStoreDetail", script)
+        self.assertIn("function renderAgentInstructions", script)
+        self.assertIn("function renderAgentSkillChips", script)
+        self.assertIn("function renderSkillPopover", script)
+        self.assertIn("activeSkillInfo", script)
+        self.assertIn("skill_details", script)
+        self.assertIn("function openAgentEditor", script)
+        self.assertIn("function saveAgentInstructions", script)
+        self.assertIn("agent-edit-open", script)
+        self.assertIn("store-card-actions", script)
+        self.assertIn("/api/stores/agents/${encodeURIComponent(agent.id)}/instructions", script)
+        self.assertIn('stat("AGENTS.md", instructionsTotal)', script)
+        self.assertIn("agent-store-card-body", script)
+        self.assertIn("agent-store-instructions-pane", script)
+        self.assertIn("agent-store-facts-pane", script)
+        self.assertNotIn("function renderStoreMetadata", script)
+        self.assertNotIn('stat("Metadata", metadataTotal)', script)
         self.assertIn("function renderFlowsStoreDetail", script)
         self.assertIn("function bindGraphPan", script)
         self.assertIn('addEventListener("pointerdown"', script)
@@ -909,7 +1121,19 @@ class HutchDashboardTests(unittest.TestCase):
         self.assertIn("function bindCollapsible", script)
         self.assertIn("if (!state.projectOnly)", script)
         self.assertIn(".store-card-grid", styles)
+        self.assertIn(".store-card-actions", styles)
+        self.assertIn(".agent-edit-open", styles)
+        self.assertIn(".agent-edit-dialog", styles)
+        self.assertIn(".skill-chip", styles)
+        self.assertIn(".skill-popover", styles)
+        self.assertIn(".agent-store-card-body", styles)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)", styles)
+        self.assertIn(".agent-store-facts-pane", styles)
+        self.assertIn(".store-instructions", styles)
+        self.assertNotIn(".store-metadata-row", styles)
         self.assertIn(".shell.sidebar-collapsed", styles)
+        self.assertIn(".qu-agent-panel", styles)
+        self.assertIn(".xterm-dialog", styles)
         self.assertIn(".flow-graph.panning", styles)
         self.assertIn(".project-tree-children[hidden]", styles)
 

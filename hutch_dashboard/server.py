@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import fcntl
+import hashlib
 import json
 import os
+import pty
 import re
+import select
 import shlex
+import signal
+import socket
+import ssl
+import struct
 import subprocess
+import termios
 import threading
 import time
 import urllib.error
@@ -27,12 +37,20 @@ from .model import (
     RunNotFound,
     RunRepository,
 )
-from .stores import list_agent_store, list_flow_store
+from .stores import (
+    AgentStoreEditError,
+    list_agent_store,
+    list_flow_store,
+    update_agent_instructions,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+QU_AGENT_SESSION = "hutch-qu-agent"
+QU_AGENT_WINDOW = "codex"
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 CODEX_TRUST_MARKERS = (
     "allow codex to work in this folder",
     "do you trust the contents of this directory",
@@ -51,6 +69,77 @@ ANSI_ESCAPE_RE = re.compile(
     r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
 )
 TEMPLATE_VAR_RE = re.compile(r"\[\[(\w+)\]\]")
+
+
+def _websocket_accept(handler: SimpleHTTPRequestHandler) -> bool:
+    key = handler.headers.get("Sec-WebSocket-Key")
+    upgrade = handler.headers.get("Upgrade", "").lower()
+    connection = handler.headers.get("Connection", "").lower()
+    if not key or upgrade != "websocket" or "upgrade" not in connection:
+        handler.send_error(HTTPStatus.BAD_REQUEST, "invalid websocket handshake")
+        return False
+    accept = base64.b64encode(
+        hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()
+    ).decode("ascii")
+    handler.send_response(HTTPStatus.SWITCHING_PROTOCOLS)
+    handler.send_header("Upgrade", "websocket")
+    handler.send_header("Connection", "Upgrade")
+    handler.send_header("Sec-WebSocket-Accept", accept)
+    handler.end_headers()
+    handler.close_connection = True
+    return True
+
+
+def _ws_send_frame(
+    sock: socket.socket,
+    payload: bytes,
+    opcode: int = 2,
+    masked: bool = False,
+) -> None:
+    payload = bytes(payload)
+    header = bytearray([0x80 | opcode])
+    length = len(payload)
+    mask_bit = 0x80 if masked else 0
+    if length < 126:
+        header.append(mask_bit | length)
+    elif length < 65536:
+        header.extend([mask_bit | 126, (length >> 8) & 0xFF, length & 0xFF])
+    else:
+        header.append(mask_bit | 127)
+        header.extend(length.to_bytes(8, "big"))
+    if masked:
+        mask = os.urandom(4)
+        payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+        sock.sendall(bytes(header) + mask + payload)
+        return
+    sock.sendall(bytes(header) + payload)
+
+
+def _ws_recv_exact(sock: socket.socket, size: int) -> bytes:
+    data = bytearray()
+    while len(data) < size:
+        chunk = sock.recv(size - len(data))
+        if not chunk:
+            raise ConnectionError("websocket closed")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def _ws_recv_frame(sock: socket.socket) -> tuple[int, bytes]:
+    header = _ws_recv_exact(sock, 2)
+    opcode = header[0] & 0x0F
+    length = header[1] & 0x7F
+    masked = bool(header[1] & 0x80)
+    if length == 126:
+        length = int.from_bytes(_ws_recv_exact(sock, 2), "big")
+    elif length == 127:
+        length = int.from_bytes(_ws_recv_exact(sock, 8), "big")
+    mask = _ws_recv_exact(sock, 4) if masked else b""
+    payload = bytearray(_ws_recv_exact(sock, length)) if length else bytearray()
+    if masked:
+        for index, value in enumerate(payload):
+            payload[index] = value ^ mask[index % 4]
+    return opcode, bytes(payload)
 
 
 class CaoGatewayError(RuntimeError):
@@ -448,6 +537,95 @@ class CaoGateway:
                 return {"ok": True, "session": session_name, "already_stopped": True}
             raise
 
+    def attach_terminal_websocket(
+        self, handler: SimpleHTTPRequestHandler, terminal_id: str
+    ) -> None:
+        terminal_id = self._terminal_id(terminal_id)
+        try:
+            cao_sock = self._connect_terminal_websocket(terminal_id)
+        except CaoGatewayError as error:
+            handler.send_error(error.status, str(error))
+            return
+        if not _websocket_accept(handler):
+            cao_sock.close()
+            return
+        try:
+            self._proxy_terminal_websocket(handler.connection, cao_sock)
+        finally:
+            try:
+                cao_sock.close()
+            except OSError:
+                pass
+
+    def _connect_terminal_websocket(self, terminal_id: str) -> socket.socket:
+        parsed = urllib.parse.urlparse(self.base_url)
+        scheme = "wss" if parsed.scheme == "https" else "ws"
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if scheme == "wss" else 80)
+        path = f"/terminals/{urllib.parse.quote(terminal_id, safe='')}/ws"
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        try:
+            raw = socket.create_connection((host, port), timeout=10.0)
+            sock = (
+                ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+                if scheme == "wss"
+                else raw
+            )
+            sock.settimeout(None)
+            host_header = f"{host}:{port}" if parsed.port else host
+            request = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {host_header}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            )
+            sock.sendall(request.encode("ascii"))
+            response = bytearray()
+            while b"\r\n\r\n" not in response:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    raise ConnectionError("CAO closed websocket handshake")
+                response.extend(chunk)
+                if len(response) > 65536:
+                    raise ConnectionError("CAO websocket handshake is too large")
+            status_line = response.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
+            if " 101 " not in f" {status_line} ":
+                raise ConnectionError(status_line)
+            return sock
+        except OSError as error:
+            raise CaoGatewayError(f"CAO terminal websocket unavailable: {error}") from error
+        except ConnectionError as error:
+            raise CaoGatewayError(f"CAO terminal websocket failed: {error}") from error
+
+    @staticmethod
+    def _proxy_terminal_websocket(
+        browser_sock: socket.socket, cao_sock: socket.socket
+    ) -> None:
+        try:
+            while True:
+                readable, _, _ = select.select([browser_sock, cao_sock], [], [], 0.25)
+                if browser_sock in readable:
+                    opcode, payload = _ws_recv_frame(browser_sock)
+                    if opcode == 8:
+                        _ws_send_frame(cao_sock, payload, opcode=8, masked=True)
+                        break
+                    _ws_send_frame(cao_sock, payload, opcode=opcode, masked=True)
+                if cao_sock in readable:
+                    opcode, payload = _ws_recv_frame(cao_sock)
+                    if opcode == 8:
+                        _ws_send_frame(browser_sock, payload, opcode=8)
+                        break
+                    _ws_send_frame(browser_sock, payload, opcode=opcode)
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            try:
+                _ws_send_frame(browser_sock, b"", opcode=8)
+            except OSError:
+                pass
+
     @staticmethod
     def _name(value: str, label: str) -> str:
         if not SAFE_NAME.fullmatch(value):
@@ -505,8 +683,287 @@ class CaoGateway:
         )
 
 
-def handler_factory(repository: RunRepository, cao: CaoGateway | None = None):
+class QuAgentError(CaoGatewayError):
+    """Local QU tmux terminal errors surfaced through dashboard JSON routes."""
+
+
+class QuAgentTerminal:
+    """Hutch-owned tmux terminal running codex in the Hutch workspace."""
+
+    def __init__(
+        self,
+        workspace: Path | None = None,
+        session_name: str = QU_AGENT_SESSION,
+        window_name: str = QU_AGENT_WINDOW,
+        command: str | None = None,
+    ) -> None:
+        self.workspace = (workspace or ROOT).resolve()
+        self.session_name = self._safe_name(session_name, "session name")
+        self.window_name = self._safe_name(window_name, "window name")
+        self.command = command or os.environ.get("HUTCH_QU_AGENT_COMMAND", "codex")
+
+    @staticmethod
+    def _safe_name(value: str, label: str) -> str:
+        if not SAFE_NAME.fullmatch(value):
+            raise QuAgentError(f"invalid QU agent {label}: {value!r}", HTTPStatus.BAD_REQUEST)
+        return value
+
+    @property
+    def target(self) -> str:
+        return f"{self.session_name}:{self.window_name}"
+
+    def _run(self, args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                args,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError as error:
+            raise QuAgentError("tmux is not installed or not on PATH") from error
+        except subprocess.TimeoutExpired as error:
+            raise QuAgentError(f"tmux command timed out: {' '.join(args)}") from error
+
+    def _has_session(self) -> bool:
+        return self._run(["tmux", "has-session", "-t", self.session_name]).returncode == 0
+
+    def is_live(self) -> bool:
+        return self._run(["tmux", "has-session", "-t", self.target]).returncode == 0
+
+    def status(self) -> dict[str, Any]:
+        live = self.is_live()
+        return {
+            "ok": True,
+            "live": live,
+            "terminal_id": self.session_name,
+            "session": self.session_name,
+            "window": self.window_name,
+            "command": self.command,
+            "working_directory": str(self.workspace),
+            "websocket_path": "/api/qu-agent/ws" if live else None,
+        }
+
+    def start(self) -> dict[str, Any]:
+        if not self.workspace.is_dir():
+            raise QuAgentError(
+                f"working directory does not exist: {self.workspace}",
+                HTTPStatus.BAD_REQUEST,
+            )
+        if self.is_live():
+            value = self.status()
+            value["already_running"] = True
+            return value
+
+        if self._has_session():
+            args = [
+                "tmux",
+                "new-window",
+                "-d",
+                "-t",
+                self.session_name,
+                "-n",
+                self.window_name,
+                "-c",
+                str(self.workspace),
+                self.command,
+            ]
+        else:
+            args = [
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                self.session_name,
+                "-n",
+                self.window_name,
+                "-c",
+                str(self.workspace),
+                self.command,
+            ]
+        result = self._run(args, timeout=30.0)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "unknown tmux error").strip()
+            raise QuAgentError(f"failed to start QU agent terminal: {detail}")
+        value = self.status()
+        value["started"] = True
+        return value
+
+    def stop(self) -> dict[str, Any]:
+        if not self._has_session():
+            value = self.status()
+            value["already_stopped"] = True
+            return value
+        result = self._run(["tmux", "kill-session", "-t", self.session_name])
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "unknown tmux error").strip()
+            raise QuAgentError(f"failed to stop QU agent terminal: {detail}")
+        value = self.status()
+        value["stopped"] = True
+        return value
+
+    def attach_websocket(self, handler: SimpleHTTPRequestHandler) -> None:
+        if not self.is_live():
+            handler.send_error(HTTPStatus.NOT_FOUND, "QU agent terminal is not running")
+            return
+        key = handler.headers.get("Sec-WebSocket-Key")
+        upgrade = handler.headers.get("Upgrade", "").lower()
+        connection = handler.headers.get("Connection", "").lower()
+        if not key or upgrade != "websocket" or "upgrade" not in connection:
+            handler.send_error(HTTPStatus.BAD_REQUEST, "invalid websocket handshake")
+            return
+
+        accept = base64.b64encode(
+            hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()
+        ).decode("ascii")
+        handler.send_response(HTTPStatus.SWITCHING_PROTOCOLS)
+        handler.send_header("Upgrade", "websocket")
+        handler.send_header("Connection", "Upgrade")
+        handler.send_header("Sec-WebSocket-Accept", accept)
+        handler.end_headers()
+        handler.close_connection = True
+        self._bridge_tmux(handler.connection)
+
+    @staticmethod
+    def _send_ws_frame(sock: socket.socket, payload: bytes, opcode: int = 2) -> None:
+        header = bytearray([0x80 | opcode])
+        length = len(payload)
+        if length < 126:
+            header.append(length)
+        elif length < 65536:
+            header.extend([126, (length >> 8) & 0xFF, length & 0xFF])
+        else:
+            header.append(127)
+            header.extend(length.to_bytes(8, "big"))
+        sock.sendall(bytes(header) + payload)
+
+    @staticmethod
+    def _recv_exact(sock: socket.socket, size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            chunk = sock.recv(size - len(data))
+            if not chunk:
+                raise ConnectionError("websocket closed")
+            data.extend(chunk)
+        return bytes(data)
+
+    @classmethod
+    def _recv_ws_frame(cls, sock: socket.socket) -> tuple[int, bytes]:
+        header = cls._recv_exact(sock, 2)
+        opcode = header[0] & 0x0F
+        length = header[1] & 0x7F
+        masked = bool(header[1] & 0x80)
+        if length == 126:
+            length = int.from_bytes(cls._recv_exact(sock, 2), "big")
+        elif length == 127:
+            length = int.from_bytes(cls._recv_exact(sock, 8), "big")
+        mask = cls._recv_exact(sock, 4) if masked else b""
+        payload = bytearray(cls._recv_exact(sock, length)) if length else bytearray()
+        if masked:
+            for index, value in enumerate(payload):
+                payload[index] = value ^ mask[index % 4]
+        return opcode, bytes(payload)
+
+    @staticmethod
+    def _set_terminal_size(fd: int, rows: int, cols: int) -> None:
+        rows = min(max(int(rows), 1), 200)
+        cols = min(max(int(cols), 2), 500)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+    @staticmethod
+    def _pty_env() -> dict[str, str]:
+        env = os.environ.copy()
+        if env.get("TERM", "dumb") == "dumb":
+            env["TERM"] = "xterm-256color"
+        return env
+
+    def _bridge_tmux(self, sock: socket.socket) -> None:
+        master_fd, slave_fd = pty.openpty()
+        proc: subprocess.Popen[bytes] | None = None
+        try:
+            self._set_terminal_size(slave_fd, 24, 80)
+            proc = subprocess.Popen(
+                ["tmux", "-u", "attach-session", "-t", self.target],
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+                preexec_fn=os.setsid,
+                env=self._pty_env(),
+            )
+            os.close(slave_fd)
+            slave_fd = -1
+            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+            while True:
+                readable, _, _ = select.select([sock, master_fd], [], [], 0.25)
+                if master_fd in readable:
+                    try:
+                        data = os.read(master_fd, 65536)
+                    except BlockingIOError:
+                        data = b""
+                    if data:
+                        self._send_ws_frame(sock, data, opcode=2)
+                    elif proc.poll() is not None:
+                        break
+                if sock in readable:
+                    opcode, payload = self._recv_ws_frame(sock)
+                    if opcode == 8:
+                        break
+                    if opcode == 9:
+                        self._send_ws_frame(sock, payload, opcode=10)
+                        continue
+                    if opcode != 1:
+                        continue
+                    message = json.loads(payload.decode("utf-8"))
+                    if message.get("type") == "input":
+                        raw = str(message.get("data", "")).encode("utf-8")
+                        for offset in range(0, len(raw), 1024):
+                            os.write(master_fd, raw[offset : offset + 1024])
+                    elif message.get("type") == "resize":
+                        self._set_terminal_size(
+                            master_fd,
+                            int(message.get("rows", 24)),
+                            int(message.get("cols", 80)),
+                        )
+                        if proc.poll() is None:
+                            os.kill(proc.pid, signal.SIGWINCH)
+                if proc.poll() is not None:
+                    break
+        except (ConnectionError, OSError, json.JSONDecodeError, ValueError):
+            pass
+        finally:
+            try:
+                self._send_ws_frame(sock, b"", opcode=8)
+            except OSError:
+                pass
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=3)
+            if slave_fd >= 0:
+                try:
+                    os.close(slave_fd)
+                except OSError:
+                    pass
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+
+
+def handler_factory(
+    repository: RunRepository,
+    cao: CaoGateway | None = None,
+    qu_agent: QuAgentTerminal | None = None,
+):
     gateway = cao or CaoGateway()
+    qu_terminal = qu_agent or QuAgentTerminal()
 
     def active_sessions() -> set[str] | None:
         try:
@@ -540,6 +997,18 @@ def handler_factory(repository: RunRepository, cao: CaoGateway | None = None):
                 return
             if parsed.path == "/api/cao/catalog":
                 self._gateway(lambda: gateway.catalog())
+                return
+            if parsed.path == "/api/qu-agent/ws":
+                qu_terminal.attach_websocket(self)
+                return
+            if parsed.path == "/api/qu-agent":
+                self._gateway(lambda: qu_terminal.status())
+                return
+            if parsed.path.startswith("/api/terminals/") and parsed.path.endswith("/ws"):
+                terminal_id = unquote(
+                    parsed.path.removeprefix("/api/terminals/").removesuffix("/ws")
+                )
+                gateway.attach_terminal_websocket(self, terminal_id)
                 return
             if parsed.path.startswith("/api/terminals/"):
                 terminal_id = unquote(parsed.path.removeprefix("/api/terminals/"))
@@ -595,8 +1064,23 @@ def handler_factory(repository: RunRepository, cao: CaoGateway | None = None):
             except ValueError as error:
                 self._json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
                 return
+            if parsed.path.startswith("/api/stores/agents/") and parsed.path.endswith("/instructions"):
+                role_id = unquote(
+                    parsed.path.removeprefix("/api/stores/agents/").removesuffix("/instructions")
+                )
+                try:
+                    self._json(update_agent_instructions(role_id, body.get("content")))
+                except AgentStoreEditError as error:
+                    self._json({"error": str(error)}, error.status)
+                return
             if parsed.path == "/api/cao/execute":
                 self._gateway(lambda: gateway.execute(body.get("command")))
+                return
+            if parsed.path == "/api/qu-agent/start":
+                self._gateway(lambda: qu_terminal.start())
+                return
+            if parsed.path == "/api/qu-agent/stop":
+                self._gateway(lambda: qu_terminal.stop())
                 return
             if parsed.path == "/api/projects/open":
                 try:

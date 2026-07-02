@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,15 @@ from scripts.hutch_paths import (
     hutch_agents_store,
     hutch_flows_store,
 )
+
+
+ROLE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class AgentStoreEditError(ValueError):
+    def __init__(self, message: str, status: HTTPStatus = HTTPStatus.BAD_REQUEST):
+        super().__init__(message)
+        self.status = status
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -35,6 +46,30 @@ def active_agents_store() -> Path:
     )
 
 
+def _role_manifest(root: Path, role_id: str) -> tuple[Path, dict[str, Any]]:
+    if not ROLE_ID_RE.fullmatch(role_id):
+        raise AgentStoreEditError("invalid agent role id")
+    role_dir = (root / role_id).resolve()
+    try:
+        if not role_dir.is_relative_to(root.resolve()):
+            raise AgentStoreEditError("agent role escapes Agent Store")
+    except OSError as error:
+        raise AgentStoreEditError(f"invalid Agent Store path: {error}") from error
+    manifest_path = role_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise AgentStoreEditError("agent role not found", HTTPStatus.NOT_FOUND)
+    try:
+        manifest = _json(manifest_path)
+    except (OSError, json.JSONDecodeError) as error:
+        raise AgentStoreEditError(f"invalid agent manifest: {error}") from error
+    if manifest.get("schema") != "hutch.agent-store.v1":
+        raise AgentStoreEditError("unsupported agent manifest schema")
+    manifest_id = str(manifest.get("id") or role_dir.name)
+    if manifest_id != role_id:
+        raise AgentStoreEditError("agent role id does not match manifest")
+    return role_dir, manifest
+
+
 def active_flows_store() -> Path:
     return _active_store(
         hutch_flows_store(),
@@ -51,6 +86,137 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if isinstance(item, str) and item]
+
+
+def _frontmatter_value(value: str) -> Any:
+    value = value.strip()
+    if not value:
+        return ""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    if value.startswith("[") and value.endswith("]"):
+        items = [
+            _frontmatter_value(item)
+            for item in value[1:-1].split(",")
+            if item.strip()
+        ]
+        return items
+    if value.lower() in {"true", "false"}:
+        return value.lower() == "true"
+    return value
+
+
+def _skill_header(skill_file: Path) -> dict[str, Any]:
+    detail: dict[str, Any] = {
+        "path": _portable_path(skill_file),
+        "available": False,
+        "metadata": {},
+    }
+    try:
+        text = skill_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return detail
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return detail
+    header: dict[str, Any] = {}
+    current_key: str | None = None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            detail["available"] = True
+            detail["metadata"] = header
+            return detail
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent and current_key and isinstance(header.get(current_key), dict):
+            child_key, separator, child_value = line.strip().partition(":")
+            if separator and child_key:
+                header[current_key][child_key.strip()] = _frontmatter_value(child_value)
+            continue
+        key, separator, value = line.partition(":")
+        if not separator or not key.strip():
+            current_key = None
+            continue
+        current_key = key.strip()
+        header[current_key] = (
+            {} if not value.strip() else _frontmatter_value(value)
+        )
+    return detail
+
+
+def _agent_skill_details(role_dir: Path, skills: list[str]) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for name in skills:
+        if not ROLE_ID_RE.fullmatch(name):
+            details.append(
+                {
+                    "name": name,
+                    "path": _portable_path(role_dir / "skills" / name / "SKILL.md"),
+                    "available": False,
+                    "metadata": {},
+                }
+            )
+            continue
+        skill_file = (role_dir / "skills" / name / "SKILL.md").resolve()
+        role_root = role_dir.resolve()
+        if not skill_file.is_relative_to(role_root):
+            details.append(
+                {
+                    "name": name,
+                    "path": _portable_path(skill_file),
+                    "available": False,
+                    "metadata": {},
+                }
+            )
+            continue
+        detail = _skill_header(skill_file)
+        detail["name"] = name
+        details.append(detail)
+    return details
+
+
+def _agent_instructions(role_dir: Path, instructions: str) -> dict[str, Any]:
+    try:
+        path = (role_dir / instructions).resolve()
+        if not path.is_relative_to(role_dir.resolve()):
+            return {"path": _portable_path(path), "content": "", "available": False}
+        content = path.read_text(encoding="utf-8")
+        return {
+            "path": _portable_path(path),
+            "content": content,
+            "available": True,
+            "bytes": len(content.encode("utf-8")),
+        }
+    except (OSError, UnicodeDecodeError):
+        return {
+            "path": _portable_path(role_dir / instructions),
+            "content": "",
+            "available": False,
+        }
+
+
+def update_agent_instructions(role_id: str, content: Any) -> dict[str, Any]:
+    if not isinstance(content, str):
+        raise AgentStoreEditError("AGENTS.md content must be a string")
+    if not content.strip():
+        raise AgentStoreEditError("AGENTS.md content cannot be empty")
+    if len(content.encode("utf-8")) > 64 * 1024:
+        raise AgentStoreEditError("AGENTS.md content exceeds 65536 bytes")
+
+    root = active_agents_store().resolve()
+    role_dir, manifest = _role_manifest(root, role_id)
+    instructions = str(manifest.get("instructions") or "AGENTS.md")
+    if instructions != "AGENTS.md":
+        raise AgentStoreEditError("only AGENTS.md editing is currently supported")
+    path = (role_dir / instructions).resolve()
+    if not path.is_relative_to(role_dir.resolve()):
+        raise AgentStoreEditError("AGENTS.md path escapes agent role directory")
+    try:
+        path.write_text(content, encoding="utf-8")
+    except OSError as error:
+        raise AgentStoreEditError(f"failed to write AGENTS.md: {error}") from error
+    return list_agent_store()
 
 
 def _mcp_servers(path: Path) -> list[dict[str, Any]]:
@@ -94,6 +260,9 @@ def list_agent_store() -> dict[str, Any]:
             role_dir = manifest_path.parent
             role_id = str(manifest.get("id") or role_dir.name)
             skills = _string_list(manifest.get("skills"))
+            skill_details = _agent_skill_details(role_dir, skills)
+            instructions = str(manifest.get("instructions") or "AGENTS.md")
+            instructions_detail = _agent_instructions(role_dir, instructions)
             mcp_path = role_dir / str(manifest.get("mcp") or "mcp.json")
             mcp = _mcp_servers(mcp_path)
             agents.append(
@@ -101,8 +270,13 @@ def list_agent_store() -> dict[str, Any]:
                     "id": role_id,
                     "description": str(manifest.get("description") or ""),
                     "path": _portable_path(role_dir),
-                    "instructions": str(manifest.get("instructions") or "AGENTS.md"),
+                    "instructions": instructions,
+                    "instructions_path": instructions_detail["path"],
+                    "instructions_content": instructions_detail["content"],
+                    "instructions_available": instructions_detail["available"],
+                    "instructions_bytes": instructions_detail.get("bytes", 0),
                     "skills": skills,
+                    "skill_details": skill_details,
                     "skill_count": len(skills),
                     "mcp_servers": mcp,
                     "mcp_count": len(mcp),

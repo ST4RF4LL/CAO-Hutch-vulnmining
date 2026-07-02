@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hutch Flow Control</title>
-    <link rel="stylesheet" href="/styles.css?v=20260630-final-report-download" />
+    <link rel="stylesheet" href="/vendor/xterm/xterm.css?v=20260701-qu-agent-xterm" />
+    <link rel="stylesheet" href="/styles.css?v=20260701-qu-agent-xterm" />
   </head>
   <body>
     <main class="shell">
@@ -26,6 +27,24 @@
             <button id="refresh" type="button">刷新</button>
           </div>
         </div>
+        <section id="qu-agent-panel" class="qu-agent-panel">
+          <header>
+            <div>
+              <span class="qu-agent-title">QU Agent</span>
+              <span id="qu-agent-status" class="qu-agent-status">未连接</span>
+            </div>
+            <button id="qu-agent-toggle" type="button" aria-expanded="true">收起</button>
+          </header>
+          <div id="qu-agent-body" class="qu-agent-body">
+            <div id="qu-agent-meta" class="qu-agent-meta">codex · developer</div>
+            <div class="qu-agent-actions">
+              <button id="qu-agent-start" type="button">启动</button>
+              <button id="qu-agent-stop" type="button">关闭</button>
+              <button id="qu-agent-open" type="button">终端</button>
+            </div>
+            <div id="qu-agent-error" class="qu-agent-error" hidden></div>
+          </div>
+        </section>
         <nav class="store-nav" aria-label="Hutch stores">
           <button id="agents-store" type="button">agents_store</button>
           <button id="flows-store" type="button">flows_store</button>
@@ -69,6 +88,37 @@
       </div>
     </dialog>
 
+    <dialog id="xterm-dialog" class="xterm-dialog">
+      <header class="console-header">
+        <div>
+          <p class="eyebrow">tmux terminal</p>
+          <h2 id="xterm-title">Terminal</h2>
+          <p id="xterm-meta" class="console-meta"></p>
+        </div>
+        <button class="dialog-close" data-close="xterm-dialog" type="button">关闭</button>
+      </header>
+      <div id="xterm-screen" class="xterm-screen"></div>
+    </dialog>
+
+    <dialog id="agent-edit-dialog" class="console-dialog agent-edit-dialog">
+      <form id="agent-edit-form" class="agent-edit-form">
+        <header class="console-header">
+          <div>
+            <p class="eyebrow">Agent Store</p>
+            <h2 id="agent-edit-title">编辑 AGENTS.md</h2>
+            <p id="agent-edit-meta" class="console-meta"></p>
+          </div>
+          <button class="dialog-close" data-close="agent-edit-dialog" type="button">关闭</button>
+        </header>
+        <textarea id="agent-edit-input" spellcheck="false"></textarea>
+        <p id="agent-edit-error" class="agent-edit-error" hidden></p>
+        <footer class="agent-edit-actions">
+          <button id="agent-edit-cancel" data-close="agent-edit-dialog" type="button">取消</button>
+          <button id="agent-edit-save" type="submit">保存 AGENTS.md</button>
+        </footer>
+      </form>
+    </dialog>
+
     <dialog id="launcher-dialog" class="console-dialog launcher-dialog">
       <header class="console-header">
         <div>
@@ -103,6 +153,8 @@
         <button id="delete-confirm" type="button">确认删除</button>
       </footer>
     </dialog>
-    <script src="/app.js?v=20260630-final-report-download" defer></script>
+    <script src="/vendor/xterm/xterm.js?v=20260701-qu-agent-xterm" defer></script>
+    <script src="/vendor/xterm/addon-fit.js?v=20260701-qu-agent-xterm" defer></script>
+    <script src="/app.js?v=20260701-qu-agent-xterm" defer></script>
   </body>
 </html>

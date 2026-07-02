@@ -2,6 +2,7 @@ const TREE_COLLAPSE_STORAGE = "hutch.collapsed-project-nodes.v1";
 const PROJECT_ONLY_STORAGE = "hutch.project-only.v1";
 const FLOW_ONLY_STORAGE = "hutch.flow-only.v1";
 const SIDEBAR_COLLAPSED_STORAGE = "hutch.sidebar-collapsed.v1";
+const QU_AGENT_COLLAPSED_STORAGE = "hutch.qu-agent-collapsed.v1";
 
 const loadStoredSet = key => {
   try {
@@ -39,10 +40,16 @@ const state = {
   agentsStore: null,
   flowsStore: null,
   pendingDeleteRun: null,
+  quAgent: null,
+  quAgentLoading: false,
+  xtermTerminal: null,
+  editingAgent: null,
+  activeSkillInfo: null,
   collapsedProjectNodes: loadStoredSet(TREE_COLLAPSE_STORAGE),
   projectOnly: loadStoredBoolean(PROJECT_ONLY_STORAGE),
   flowOnly: loadStoredBoolean(FLOW_ONLY_STORAGE),
   sidebarCollapsed: loadStoredBoolean(SIDEBAR_COLLAPSED_STORAGE),
+  quAgentCollapsed: loadStoredBoolean(QU_AGENT_COLLAPSED_STORAGE),
 };
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -98,6 +105,7 @@ const persistViewPreferences = () => {
     localStorage.setItem(PROJECT_ONLY_STORAGE, String(state.projectOnly));
     localStorage.setItem(FLOW_ONLY_STORAGE, String(state.flowOnly));
     localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE, String(state.sidebarCollapsed));
+    localStorage.setItem(QU_AGENT_COLLAPSED_STORAGE, String(state.quAgentCollapsed));
   } catch (_error) {
     // The dashboard remains functional when browser storage is unavailable.
   }
@@ -156,6 +164,217 @@ function updateSidebarCollapseControl() {
   button.setAttribute("aria-label", state.sidebarCollapsed ? "展开左侧边栏" : "收起左侧边栏");
   button.title = state.sidebarCollapsed ? "展开左侧边栏" : "收起左侧边栏";
   button.textContent = state.sidebarCollapsed ? "›" : "‹";
+}
+
+function updateQuAgentPanel() {
+  const panel = document.querySelector("#qu-agent-panel");
+  const status = document.querySelector("#qu-agent-status");
+  const body = document.querySelector("#qu-agent-body");
+  const toggle = document.querySelector("#qu-agent-toggle");
+  const meta = document.querySelector("#qu-agent-meta");
+  const errorBox = document.querySelector("#qu-agent-error");
+  const start = document.querySelector("#qu-agent-start");
+  const stop = document.querySelector("#qu-agent-stop");
+  const open = document.querySelector("#qu-agent-open");
+  const agent = state.quAgent || {};
+  const live = Boolean(agent.live);
+  panel.classList.toggle("collapsed", state.quAgentCollapsed);
+  panel.classList.toggle("live", live);
+  panel.classList.toggle("loading", state.quAgentLoading);
+  body.hidden = state.quAgentCollapsed;
+  toggle.setAttribute("aria-expanded", String(!state.quAgentCollapsed));
+  toggle.textContent = state.quAgentCollapsed ? "展开" : "收起";
+  status.textContent = state.quAgentLoading ? "处理中" : live ? "运行中" : "未运行";
+  start.disabled = state.quAgentLoading || live;
+  stop.disabled = state.quAgentLoading || !live;
+  open.disabled = !live || !agent.websocket_path;
+  open.title = live
+    ? "在 Hutch 中打开 QU tmux terminal"
+    : "QU Agent 未运行";
+  const session = agent.session || "hutch-qu-agent";
+  const windowName = agent.window || "codex";
+  const workspace = agent.working_directory || "Hutch workspace";
+  meta.textContent = `codex · ${session}:${windowName} · ${workspace}`;
+  errorBox.hidden = !agent.error;
+  errorBox.textContent = agent.error ? `ERROR: ${agent.error}` : "";
+}
+
+async function refreshQuAgent() {
+  state.quAgentLoading = true;
+  updateQuAgentPanel();
+  try {
+    state.quAgent = await fetchJSON("/api/qu-agent");
+  } catch (error) {
+    state.quAgent = { error: error.message, live: false };
+  } finally {
+    state.quAgentLoading = false;
+    updateQuAgentPanel();
+  }
+}
+
+async function startQuAgent() {
+  state.quAgentLoading = true;
+  updateQuAgentPanel();
+  try {
+    state.quAgent = await postJSON("/api/qu-agent/start", {});
+  } catch (error) {
+    state.quAgent = { error: error.message, live: false };
+  } finally {
+    state.quAgentLoading = false;
+    updateQuAgentPanel();
+  }
+}
+
+async function stopQuAgent() {
+  state.quAgentLoading = true;
+  updateQuAgentPanel();
+  try {
+    state.quAgent = await postJSON("/api/qu-agent/stop", {});
+    closeXtermTerminal();
+  } catch (error) {
+    state.quAgent = { ...state.quAgent, error: error.message };
+  } finally {
+    state.quAgentLoading = false;
+    updateQuAgentPanel();
+  }
+}
+
+function websocketURL(path) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}${path}`;
+}
+
+function cleanupXtermTerminal() {
+  if (!state.xtermTerminal) return;
+  const current = state.xtermTerminal;
+  state.xtermTerminal = null;
+  if (current.resizeObserver) current.resizeObserver.disconnect();
+  if (current.ws) {
+    current.ws.onclose = null;
+    current.ws.onerror = null;
+    if (current.ws.readyState === WebSocket.CONNECTING || current.ws.readyState === WebSocket.OPEN) {
+      current.ws.close();
+    }
+  }
+  if (current.term) current.term.dispose();
+}
+
+function closeXtermTerminal() {
+  const dialog = document.querySelector("#xterm-dialog");
+  cleanupXtermTerminal();
+  if (dialog.open) dialog.close();
+}
+
+function sendXtermTerminalResize() {
+  const current = state.xtermTerminal;
+  if (!current?.ws || !current?.term || current.ws.readyState !== WebSocket.OPEN) return;
+  current.fitAddon.fit();
+  current.ws.send(JSON.stringify({ type: "resize", rows: current.term.rows, cols: current.term.cols }));
+}
+
+async function openXtermTerminal({ title, meta, websocketPath, errorTarget = null }) {
+  if (!websocketPath) return;
+  const dialog = document.querySelector("#xterm-dialog");
+  const screen = document.querySelector("#xterm-screen");
+  const titleNode = document.querySelector("#xterm-title");
+  const metaNode = document.querySelector("#xterm-meta");
+  const TerminalCtor = window.Terminal;
+  const FitAddonCtor = window.FitAddon?.FitAddon || window.FitAddon;
+  if (!TerminalCtor || !FitAddonCtor) {
+    const error = "xterm.js 未加载，无法打开 terminal。";
+    if (errorTarget === "qu") {
+      state.quAgent = { ...state.quAgent, error };
+      updateQuAgentPanel();
+    }
+    return;
+  }
+  cleanupXtermTerminal();
+  screen.replaceChildren();
+  titleNode.textContent = title || "Terminal";
+  metaNode.textContent = meta || "";
+  if (!dialog.open) dialog.showModal();
+
+  const term = new TerminalCtor({
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: "JetBrains Mono, Menlo, Monaco, Consolas, monospace",
+    scrollback: 10000,
+    theme: {
+      background: "#0d1117",
+      foreground: "#c9d1d9",
+      cursor: "#58a6ff",
+      selectionBackground: "#264f78",
+      black: "#0d1117",
+      red: "#ff7b72",
+      green: "#3fb950",
+      yellow: "#d29922",
+      blue: "#58a6ff",
+      magenta: "#bc8cff",
+      cyan: "#39d353",
+      white: "#c9d1d9",
+    },
+  });
+  const fitAddon = new FitAddonCtor();
+  term.loadAddon(fitAddon);
+  term.open(screen);
+
+  const ws = new WebSocket(websocketURL(websocketPath));
+  ws.binaryType = "arraybuffer";
+  state.xtermTerminal = { term, fitAddon, ws, resizeObserver: null };
+
+  ws.onopen = () => {
+    sendXtermTerminalResize();
+    term.focus();
+  };
+  ws.onmessage = event => {
+    if (event.data instanceof ArrayBuffer) {
+      term.write(new Uint8Array(event.data));
+    } else if (event.data instanceof Blob) {
+      event.data.arrayBuffer().then(buffer => term.write(new Uint8Array(buffer)));
+    }
+  };
+  ws.onclose = () => {
+    term.write("\r\n\x1b[33m[Connection closed]\x1b[0m\r\n");
+  };
+  ws.onerror = () => {
+    term.write("\r\n\x1b[31m[WebSocket error]\x1b[0m\r\n");
+  };
+  term.onData(data => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "input", data }));
+    }
+  });
+  term.attachCustomKeyEventHandler(event => {
+    if (event.ctrlKey && event.shiftKey && event.key === "C") {
+      const selection = term.getSelection();
+      if (selection) navigator.clipboard.writeText(selection).catch(() => {});
+      return false;
+    }
+    return true;
+  });
+  term.onSelectionChange(() => {
+    const selection = term.getSelection();
+    if (selection) navigator.clipboard.writeText(selection).catch(() => {});
+  });
+
+  let resizeTimer = null;
+  const resizeObserver = new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(sendXtermTerminalResize, 50);
+  });
+  resizeObserver.observe(screen);
+  state.xtermTerminal.resizeObserver = resizeObserver;
+  requestAnimationFrame(sendXtermTerminalResize);
+}
+
+async function openQuAgentTerminal() {
+  if (!state.quAgent?.live || !state.quAgent.websocket_path) return;
+  await openXtermTerminal({
+    title: "QU Agent",
+    meta: `codex · ${state.quAgent.session}:${state.quAgent.window} · ${state.quAgent.working_directory}`,
+    websocketPath: state.quAgent.websocket_path,
+    errorTarget: "qu",
+  });
 }
 
 function updateStoreNav() {
@@ -482,6 +701,159 @@ function renderStoreChips(items, emptyText) {
   return list;
 }
 
+function skillMetadataValue(value) {
+  if (Array.isArray(value)) return value.map(skillMetadataValue).join(", ");
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, child]) => `${key}: ${skillMetadataValue(child)}`)
+      .join(" · ");
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return value === undefined || value === null || value === "" ? "—" : String(value);
+}
+
+function skillMetadataEntries(metadata) {
+  const rows = [];
+  for (const [key, value] of Object.entries(metadata || {})) {
+    if (key === "name" || key === "description") continue;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const [childKey, childValue] of Object.entries(value)) {
+        rows.push([`${key}.${childKey}`, childValue]);
+      }
+    } else {
+      rows.push([key, value]);
+    }
+  }
+  return rows;
+}
+
+function renderSkillPopover(skill) {
+  const metadata = skill.metadata || {};
+  const panel = node("div", "skill-popover");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", `${skill.name} Skill metadata`);
+  panel.addEventListener("click", event => event.stopPropagation());
+  panel.append(
+    node("p", "eyebrow", "Skill.md header"),
+    node("h6", "", metadata.name || skill.name),
+  );
+  panel.append(
+    node(
+      "p",
+      "skill-popover-description",
+      metadata.description || (skill.available ? "未记录 description。" : "未找到 SKILL.md header。"),
+    ),
+  );
+  const rows = node("div", "skill-popover-rows");
+  rows.append(skillPopoverRow("Declared", skill.name));
+  for (const [key, value] of skillMetadataEntries(metadata)) {
+    rows.append(skillPopoverRow(key, skillMetadataValue(value)));
+  }
+  rows.append(skillPopoverRow("Path", skill.path || "—"));
+  panel.append(rows);
+  return panel;
+}
+
+function skillPopoverRow(label, value) {
+  const row = node("div", "skill-popover-row");
+  row.append(node("label", "", label), node("span", "", value));
+  return row;
+}
+
+function toggleSkillPopover(agentId, skillName) {
+  const active = state.activeSkillInfo;
+  state.activeSkillInfo = active?.agentId === agentId && active?.skillName === skillName
+    ? null
+    : { agentId, skillName };
+  renderAgentsStoreDetail();
+}
+
+function renderAgentSkillChips(agent) {
+  const list = node("div", "store-chip-list");
+  const skills = Array.isArray(agent.skills) ? agent.skills : [];
+  if (!skills.length) {
+    list.append(node("span", "graph-muted", "未声明 Skills"));
+    return list;
+  }
+  const details = new Map((agent.skill_details || []).map(item => [item.name, item]));
+  for (const name of skills) {
+    const skill = details.get(name) || { name, available: false, metadata: {}, path: "" };
+    const active = state.activeSkillInfo?.agentId === agent.id
+      && state.activeSkillInfo?.skillName === name;
+    const wrap = node("span", "skill-chip-wrap");
+    const button = node("button", `store-chip skill-chip${active ? " active" : ""}`, name);
+    button.type = "button";
+    button.setAttribute("aria-expanded", String(active));
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleSkillPopover(agent.id, name);
+    });
+    wrap.append(button);
+    if (active) wrap.append(renderSkillPopover(skill));
+    list.append(wrap);
+  }
+  return list;
+}
+
+function renderAgentInstructions(agent) {
+  if (!agent.instructions_available) {
+    return node("div", "graph-muted", "未找到 AGENTS.md 内容。");
+  }
+  const block = node("pre", "store-instructions", agent.instructions_content || "");
+  block.title = agent.instructions_path || agent.instructions || "AGENTS.md";
+  return block;
+}
+
+function setAgentEditorBusy(busy) {
+  document.querySelector("#agent-edit-input").disabled = busy;
+  document.querySelector("#agent-edit-cancel").disabled = busy;
+  document.querySelector("#agent-edit-save").disabled = busy;
+}
+
+function openAgentEditor(agent) {
+  state.editingAgent = agent;
+  document.querySelector("#agent-edit-title").textContent = `编辑 ${agent.id} / AGENTS.md`;
+  document.querySelector("#agent-edit-meta").textContent = agent.instructions_path || agent.path || "";
+  document.querySelector("#agent-edit-input").value = agent.instructions_content || "";
+  const error = document.querySelector("#agent-edit-error");
+  error.hidden = true;
+  error.textContent = "";
+  setAgentEditorBusy(false);
+  const dialog = document.querySelector("#agent-edit-dialog");
+  if (!dialog.open) dialog.showModal();
+  requestAnimationFrame(() => document.querySelector("#agent-edit-input").focus());
+}
+
+function closeAgentEditor() {
+  state.editingAgent = null;
+  document.querySelector("#agent-edit-error").hidden = true;
+  setAgentEditorBusy(false);
+}
+
+async function saveAgentInstructions(event) {
+  event.preventDefault();
+  const agent = state.editingAgent;
+  if (!agent) return;
+  const content = document.querySelector("#agent-edit-input").value;
+  const error = document.querySelector("#agent-edit-error");
+  error.hidden = true;
+  error.textContent = "";
+  setAgentEditorBusy(true);
+  try {
+    state.agentsStore = await postJSON(
+      `/api/stores/agents/${encodeURIComponent(agent.id)}/instructions`,
+      { content },
+    );
+    document.querySelector("#agent-edit-dialog").close();
+    renderAgentsStoreDetail();
+  } catch (saveError) {
+    error.textContent = `保存失败：${saveError.message}`;
+    error.hidden = false;
+  } finally {
+    setAgentEditorBusy(false);
+  }
+}
+
 function renderStoreHeader(kind, store, countLabel) {
   const header = node("header", "detail-header store-detail-header");
   const title = node("div");
@@ -503,10 +875,12 @@ function renderAgentsStoreDetail() {
   const agents = Array.isArray(store.agents) ? store.agents : [];
   const skillTotal = agents.reduce((total, agent) => total + (agent.skill_count || 0), 0);
   const mcpTotal = agents.reduce((total, agent) => total + (agent.mcp_count || 0), 0);
+  const instructionsTotal = agents.filter(agent => agent.instructions_available).length;
   detail.append(renderStoreHeader("agents_store", store, `${agents.length} roles`));
   const stats = node("div", "stats store-stats");
   stats.append(
     stat("Agent Roles", agents.length),
+    stat("AGENTS.md", instructionsTotal),
     stat("Skills", skillTotal),
     stat("MCP Servers", mcpTotal),
     stat("Store", store.exists ? "available" : "missing"),
@@ -517,22 +891,39 @@ function renderAgentsStoreDetail() {
     return;
   }
   const section = node("section", "section");
-  section.append(sectionTitle("Agent Store", "只展示 role 简述、Skills 和 MCP server 摘要"));
+  section.append(sectionTitle("Agent Store", "展示 role 简述、AGENTS.md、Skills 和 MCP server 摘要"));
   const grid = node("div", "store-card-grid agent-store-grid");
   for (const agent of agents) {
     const card = node("article", "store-card card");
     const head = node("div", "store-card-head");
     const identity = node("div", "store-card-identity");
     identity.append(node("h4", "", agent.id), node("p", "", agent.description || "未记录简述"));
-    head.append(identity, node("span", "store-count", `${agent.skill_count || 0} skills · ${agent.mcp_count || 0} mcp`));
+    const actions = node("div", "store-card-actions");
+    const edit = node("button", "agent-edit-open", "编辑");
+    edit.type = "button";
+    edit.title = "编辑 AGENTS.md";
+    if ((agent.instructions || "AGENTS.md") !== "AGENTS.md") {
+      edit.disabled = true;
+      edit.title = "当前仅支持编辑 AGENTS.md";
+    }
+    edit.addEventListener("click", () => openAgentEditor(agent));
+    actions.append(edit, node("span", "store-count", `${agent.skill_count || 0} skills · ${agent.mcp_count || 0} mcp`));
+    head.append(identity, actions);
     card.append(head);
+    const body = node("div", "agent-store-card-body");
+    const instructionsPane = node("div", "agent-store-instructions-pane");
+    instructionsPane.append(node("h5", "", "AGENTS.md"), renderAgentInstructions(agent));
+    const factsPane = node("div", "agent-store-facts-pane");
     const facts = node("div", "facts store-facts");
     facts.append(
       fact("Instructions", agent.instructions || "AGENTS.md"),
+      fact("Instructions Path", agent.instructions_path || "—"),
       fact("Path", agent.path || "—"),
     );
-    card.append(facts);
-    card.append(node("h5", "", "Skills"), renderStoreChips(agent.skills || [], "未声明 Skills"));
+    factsPane.append(facts);
+    body.append(instructionsPane, factsPane);
+    card.append(body);
+    card.append(node("h5", "", "Skills"), renderAgentSkillChips(agent));
     card.append(node("h5", "", "MCP Servers"));
     const mcpList = node("div", "store-mcp-list");
     if (!(agent.mcp_servers || []).length) {
@@ -632,6 +1023,7 @@ async function selectFlowsStore(force = false) {
   state.selectedRun = null;
   state.selectedCampaign = null;
   state.selectedPath = null;
+  state.activeSkillInfo = null;
   state.view = "flows_store";
   renderRunList();
   if (!state.flowsStore || force) {
@@ -1806,11 +2198,37 @@ async function refreshTerminal() {
 }
 
 async function openTerminal(assignment, agent) {
-  const dialog = document.querySelector("#terminal-dialog");
+  const terminalId = assignment.terminal_id;
+  const title = agent?.profile || assignment.window || "Agent Terminal";
+  const baseMeta = [assignment.session, assignment.window, terminalId].filter(Boolean).join(" · ");
+  if (!terminalId) return;
   if (state.terminalTimer) clearInterval(state.terminalTimer);
-  state.terminalId = assignment.terminal_id;
-  document.querySelector("#terminal-title").textContent = agent?.profile || assignment.window || "Agent Terminal";
-  document.querySelector("#terminal-meta").textContent = [assignment.session, assignment.window, assignment.terminal_id].filter(Boolean).join(" · ");
+  state.terminalTimer = null;
+  state.terminalId = null;
+  try {
+    const value = await fetchJSON(`/api/terminals/${encodeURIComponent(terminalId)}`);
+    if (value.live) {
+      await openXtermTerminal({
+        title,
+        meta: [
+          value.session || assignment.session,
+          value.window || assignment.window,
+          value.status,
+          value.working_directory,
+          terminalId,
+        ].filter(Boolean).join(" · "),
+        websocketPath: `/api/terminals/${encodeURIComponent(terminalId)}/ws`,
+      });
+      return;
+    }
+  } catch (_error) {
+    // Fall through to the durable scrollback dialog, which reports the fetch error.
+  }
+
+  const dialog = document.querySelector("#terminal-dialog");
+  state.terminalId = terminalId;
+  document.querySelector("#terminal-title").textContent = title;
+  document.querySelector("#terminal-meta").textContent = baseMeta;
   document.querySelector("#terminal-screen").textContent = "正在连接 tmux pane…";
   document.querySelector("#terminal-input").value = "";
   if (!dialog.open) dialog.showModal();
@@ -1940,6 +2358,12 @@ document.querySelector("#delete-dialog").addEventListener("close", () => {
   document.querySelector("#delete-cancel").disabled = false;
 });
 
+function closeSkillPopover() {
+  if (!state.activeSkillInfo) return;
+  state.activeSkillInfo = null;
+  if (state.view === "agents_store") renderAgentsStoreDetail();
+}
+
 document.querySelector("#cao-launcher").addEventListener("click", openLauncher);
 document.querySelector("#agents-store").addEventListener("click", () => selectAgentsStore());
 document.querySelector("#flows-store").addEventListener("click", () => selectFlowsStore());
@@ -1948,6 +2372,16 @@ document.querySelector("#sidebar-toggle").addEventListener("click", () => {
   persistViewPreferences();
   updateSidebarCollapseControl();
 });
+document.querySelector("#qu-agent-toggle").addEventListener("click", () => {
+  state.quAgentCollapsed = !state.quAgentCollapsed;
+  persistViewPreferences();
+  updateQuAgentPanel();
+});
+document.querySelector("#qu-agent-start").addEventListener("click", startQuAgent);
+document.querySelector("#qu-agent-stop").addEventListener("click", stopQuAgent);
+document.querySelector("#qu-agent-open").addEventListener("click", openQuAgentTerminal);
+document.querySelector("#agent-edit-form").addEventListener("submit", saveAgentInstructions);
+document.querySelector("#agent-edit-dialog").addEventListener("close", closeAgentEditor);
 function refreshSidebarFilters() {
   persistViewPreferences();
   updateProjectOnlyControl();
@@ -1983,15 +2417,25 @@ document.querySelector("#project-only").addEventListener("click", () => {
 for (const button of document.querySelectorAll("[data-close]")) {
   button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close());
 }
+document.addEventListener("click", closeSkillPopover);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeSkillPopover();
+});
 document.querySelector("#terminal-dialog").addEventListener("close", () => {
   if (state.terminalTimer) clearInterval(state.terminalTimer);
   state.terminalTimer = null;
   state.terminalId = null;
 });
+document.querySelector("#xterm-dialog").addEventListener("close", cleanupXtermTerminal);
 
-document.querySelector("#refresh").addEventListener("click", loadRuns);
+document.querySelector("#refresh").addEventListener("click", () => {
+  loadRuns();
+  refreshQuAgent();
+});
 updateProjectOnlyControl();
 updateFlowOnlyControl();
 updateSidebarCollapseControl();
+updateQuAgentPanel();
 updateStoreNav();
+refreshQuAgent();
 loadRuns();
